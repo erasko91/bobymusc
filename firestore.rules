@@ -1,0 +1,54 @@
+rules_version = '2';
+// BobyMusc : chacun écrit seulement ses données ; seuls les amis acceptés voient les séances.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    // « uid » m'a dans sa liste d'amis
+    function isFriend(uid) { return exists(/databases/$(database)/documents/users/$(uid)/friends/$(me())); }
+    function hasRequest(owner, from) { return exists(/databases/$(database)/documents/users/$(owner)/requests/$(from)); }
+
+    // Code ami -> identifiant
+    match /codes/{code} {
+      allow get: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == me();
+      allow delete: if signedIn() && resource.data.uid == me();
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (uid == me() || isFriend(uid));
+      allow write: if signedIn() && uid == me();
+
+      match /workouts/{wid} {
+        allow read: if signedIn() && (uid == me() || isFriend(uid));
+        allow write: if signedIn() && uid == me();
+        // Un ami peut seulement ajouter/retirer SA réaction
+        allow update: if signedIn() && isFriend(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          && request.resource.data.get('reactions', {}).diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([me()]);
+      }
+
+      // Programmes, exercices perso, mesures : visibles seulement par soi
+      match /private/{doc} {
+        allow read, write: if signedIn() && uid == me();
+      }
+
+      match /friends/{fid} {
+        allow read: if signedIn() && (uid == me() || fid == me());
+        allow delete: if signedIn() && (uid == me() || fid == me());
+        // Ajout possible seulement s'il existe une demande d'ami
+        allow create: if signedIn() && (
+          (uid == me() && hasRequest(me(), fid)) ||
+          (fid == me() && hasRequest(me(), uid))
+        );
+      }
+
+      // Demandes d'ami reçues (l'identifiant du document = celui qui demande)
+      match /requests/{rid} {
+        allow read: if signedIn() && (uid == me() || rid == me());
+        allow create: if signedIn() && rid == me() && uid != me();
+        allow delete: if signedIn() && (uid == me() || rid == me());
+      }
+    }
+  }
+}

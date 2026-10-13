@@ -1,7 +1,7 @@
 'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.0.1';
+const VERSION = '1.1.0';
 const APP_URL = 'https://erasko91.github.io/bobymusc/';
 const KEY = 'bobmusc-data-v1';
 const LB = 2.20462;
@@ -48,6 +48,7 @@ function load() {
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(db)); }
   catch (e) { toast('Impossible d’enregistrer : la mémoire du téléphone est pleine ?'); }
+  schedulePrivatePush();
 }
 
 /* ---------- Unités et formats ---------- */
@@ -150,13 +151,17 @@ function lastSets(exId, before = Infinity, excludeId = null) {
   }
   return best ? best.sets : [];
 }
+// Une séance d'ami contient le nom/muscle/type de chaque exercice (n, m, t)
+const exName = e => e.n || ex(e.ex).name;
+const exMuscle = e => e.m || ex(e.ex).muscle;
+const exType = e => e.t || ex(e.ex).type;
 function workoutTotals(w) {
   let vol = 0, sets = 0;
   for (const e of w.exercises) {
     for (const s of e.sets) {
       if (w === db.active && !s.done) continue;
       sets++;
-      if (ex(e.ex).type === 'wr') vol += (+s.w || 0) * (+s.r || 0);
+      if (exType(e) === 'wr') vol += (+s.w || 0) * (+s.r || 0);
     }
   }
   return { vol, sets };
@@ -285,15 +290,54 @@ function exIcon(e) {
   const letters = e.name.replace(/\(.*?\)/g, '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
   return `<div class="ex-icon m-${norm(e.muscle).replace(/[^a-z]/g, '')}">${esc(letters)}</div>`;
 }
-function workoutCard(w) {
+// author : nom de l'ami qui a fait la séance (fil d'actualité)
+function workoutCard(w, author = null) {
   const t = workoutTotals(w);
-  const lines = w.exercises.slice(0, 4).map(e => `<li><span class="muted">${e.sets.length} ×</span> ${esc(ex(e.ex).name)}</li>`).join('');
+  const href = w.owner ? `#/fworkout/${w.owner}/${w.id}` : `#/workout/${w.id}`;
+  const lines = w.exercises.slice(0, 4).map(e => `<li><span class="muted">${e.sets.length} ×</span> ${esc(exName(e))}</li>`).join('');
   const more = w.exercises.length > 4 ? `<li class="muted">et ${w.exercises.length - 4} autre${w.exercises.length > 5 ? 's' : ''}…</li>` : '';
-  return `<a class="card wcard" href="#/workout/${w.id}">
+  const reacts = reactionSummary(w);
+  return `<a class="card wcard" href="${href}">
+    ${author ? `<div class="author"><div class="avatar sm">${esc(author[0].toUpperCase())}</div><b>${esc(author)}</b></div>` : ''}
     <div class="wcard-top"><div><div class="wcard-name">${esc(w.name)}</div><div class="muted small">${fmtDate(w.start)} · ${timeFmt.format(new Date(w.start))}</div></div>
     ${w.prs && w.prs.length ? `<span class="badge">🏆 ${w.prs.length}</span>` : ''}</div>
     <div class="mini-stats"><span>⏱ ${fmtDur(w.end - w.start)}</span>${t.vol ? `<span>🏋️ ${fmtW(t.vol)}</span>` : ''}<span>✔ ${t.sets} série${t.sets > 1 ? 's' : ''}</span></div>
-    <ul class="wcard-ex">${lines}${more}</ul></a>`;
+    <ul class="wcard-ex">${lines}${more}</ul>
+    ${reacts ? `<div class="react-sum">${reacts}</div>` : ''}</a>`;
+}
+const REACTIONS = ['💪', '🔥', '👏', '😮'];
+function reactionSummary(w) {
+  const r = Object.values(w.reactions || {});
+  if (!r.length) return '';
+  const counts = {};
+  for (const x of r) counts[x.e] = (counts[x.e] || 0) + 1;
+  return Object.entries(counts).map(([e, n]) => `${e} ${n}`).join('  ');
+}
+function workoutBlocks(w, own) {
+  const prKey = new Set((w.prs || []).map(p => p.ex));
+  return w.exercises.map(e => {
+    const e0 = { name: exName(e), muscle: exMuscle(e), type: exType(e) };
+    let n = 0;
+    const rows = e.sets.map(s => {
+      const code = s.t && s.t !== 'n' ? SET_CODES[s.t] : String(++n);
+      return `<div class="set-line"><span class="set-n t-${s.t || 'n'}">${code}</span><span>${fmtSet(s, e0.type)}</span>
+        ${e0.type === 'wr' && s.t !== 'w' ? `<span class="muted small">1RM ${fmtW(e1rm(+s.w, +s.r))}</span>` : ''}</div>`;
+    }).join('');
+    const prs = (w.prs || []).filter(p => p.ex === e.ex);
+    const head = `${exIcon(e0)}<div><div class="ex-name">${esc(e0.name)} ${prKey.has(e.ex) ? '🏆' : ''}</div><div class="muted small">${esc(e0.muscle)}</div></div>`;
+    return `<div class="card">
+      ${own ? `<a class="ex-row" href="#/exercise/${e.ex}">${head}</a>` : `<div class="ex-row">${head}</div>`}
+      ${e.note ? `<p class="note">${esc(e.note)}</p>` : ''}
+      ${rows}
+      ${prs.length ? `<div class="pr-list">${prs.map(p => `<span class="badge">🏆 ${esc(p.label)} : ${esc(PR_KEYS[e0.type].find(k => k[0] === p.k)[2](p.v))}</span>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+function workoutHead(w) {
+  const t = workoutTotals(w);
+  return `<div class="wd-head"><h2>${esc(w.name)}</h2><div class="muted">${fmtDate(w.start)} · ${timeFmt.format(new Date(w.start))}</div>
+      ${w.note ? `<p class="note">${esc(w.note)}</p>` : ''}</div>
+      <div class="card"><div class="stats3">${stat('Durée', fmtDur(w.end - w.start))}${stat('Volume', fmtW(t.vol))}${stat('Records', (w.prs || []).length)}</div></div>`;
 }
 
 /* ---------- Vues ---------- */
@@ -305,7 +349,7 @@ function vHome() {
   const weeks = weekBuckets(8);
   const tw = weeks[weeks.length - 1];
   const name = db.settings.name ? esc(db.settings.name) : 'champion';
-  const list = ws.slice(0, ui.histLimit).map(workoutCard).join('');
+  const list = ws.slice(0, ui.histLimit).map(w => workoutCard(w)).join('');
   return {
     title: '<span class="logo">Boby<b>Musc</b></span>',
     actions: `<a class="icon" href="#/settings" aria-label="Réglages">⚙️</a>`,
@@ -325,33 +369,221 @@ function vHome() {
 function vWorkout(id) {
   const w = db.workouts.find(x => x.id === id);
   if (!w) return vNotFound();
-  const t = workoutTotals(w);
-  const prKey = new Set((w.prs || []).map(p => p.ex));
-  const blocks = w.exercises.map(e => {
-    const e0 = ex(e.ex);
-    let n = 0;
-    const rows = e.sets.map(s => {
-      const code = s.t && s.t !== 'n' ? SET_CODES[s.t] : String(++n);
-      return `<div class="set-line"><span class="set-n t-${s.t || 'n'}">${code}</span><span>${fmtSet(s, e0.type)}</span>
-        ${e0.type === 'wr' && s.t !== 'w' ? `<span class="muted small">1RM ${fmtW(e1rm(+s.w, +s.r))}</span>` : ''}</div>`;
-    }).join('');
-    const prs = (w.prs || []).filter(p => p.ex === e.ex);
-    return `<div class="card">
-      <a class="ex-row" href="#/exercise/${e.ex}">${exIcon(e0)}<div><div class="ex-name">${esc(e0.name)} ${prKey.has(e.ex) ? '🏆' : ''}</div><div class="muted small">${esc(e0.muscle)}</div></div></a>
-      ${e.note ? `<p class="note">${esc(e.note)}</p>` : ''}
-      ${rows}
-      ${prs.length ? `<div class="pr-list">${prs.map(p => `<span class="badge">🏆 ${esc(p.label)} : ${esc(PR_KEYS[e0.type].find(k => k[0] === p.k)[2](p.v))}</span>`).join('')}</div>` : ''}
-    </div>`;
-  }).join('');
+  // Réactions des amis (si connecté) : chargées en ligne
+  let reacts = '';
+  if (C()?.state.user) {
+    const cw = fetchOnce(`fw/${C().state.user.uid}/${id}`, () => C().friendWorkout(C().state.user.uid, id));
+    const list = Object.values((cw && cw.reactions) || {});
+    if (list.length) reacts = `<div class="card"><div class="card-title">Réactions de tes amis</div>${list.map(r => `<div class="react-line"><span class="react-e">${r.e}</span>${esc(r.n)}</div>`).join('')}</div>`;
+  }
   return {
     title: 'Séance', back: '#/home',
     actions: `<button class="icon" data-a="workout-menu" data-id="${w.id}" aria-label="Options">⋯</button>`,
-    html: `<div class="wd-head"><h2>${esc(w.name)}</h2><div class="muted">${fmtDate(w.start)} · ${timeFmt.format(new Date(w.start))}</div>
-      ${w.note ? `<p class="note">${esc(w.note)}</p>` : ''}</div>
-      <div class="card"><div class="stats3">${stat('Durée', fmtDur(w.end - w.start))}${stat('Volume', fmtW(t.vol))}${stat('Records', (w.prs || []).length)}</div></div>
-      ${blocks}
+    html: `${workoutHead(w)}${reacts}
+      ${workoutBlocks(w, true)}
       <button class="btn primary block" data-a="redo" data-id="${w.id}">↻ Refaire cette séance</button>`,
   };
+}
+
+/* ---------- Amis (en ligne) ---------- */
+const C = () => window.Cloud || null;
+let cloudFailed = false;
+// Petit cache des données en ligne : la vue s'affiche tout de suite puis se met à jour
+const net = {};
+function fetchOnce(key, fn, maxAge = 60000) {
+  const c = net[key];
+  if (c && (c.loading || Date.now() - c.at < maxAge)) return c.data;
+  net[key] = { loading: true, at: 0, data: c ? c.data : undefined };
+  fn().then(d => { net[key] = { loading: false, at: Date.now(), data: d }; refreshIfVisible(); })
+    .catch(e => { net[key] = { loading: false, at: Date.now(), data: c ? c.data : null, err: e }; refreshIfVisible(); });
+  return net[key].data;
+}
+const isLoading = key => net[key] && net[key].loading && net[key].data === undefined;
+function refreshIfVisible() {
+  if (!['friends', 'friend', 'fworkout', 'workout', 'settings'].includes(route[0])) return;
+  const a = document.activeElement;
+  if (a && a.closest && a.closest('#view') && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
+  const y = window.scrollY;
+  render();
+  window.scrollTo(0, y);
+}
+const loader = `<div class="empty small"><span class="spinner"></span> Chargement…</div>`;
+
+function vFriends() {
+  const cl = C();
+  if (!cl || !cl.state.ready) {
+    return { title: 'Amis', html: cloudFailed ? `<div class="empty">Impossible de charger la partie en ligne.<br>Vérifie ta connexion internet puis rouvre l’appli.</div>` : loader };
+  }
+  const st = cl.state;
+  if (!st.user) {
+    return {
+      title: 'Amis',
+      html: `<div class="friends-hero"><div class="big-emoji">🤝</div><h2>Entraîne-toi avec tes amis</h2>
+        <p class="muted">Crée un compte gratuit pour voir les séances et les records de tes amis, leur envoyer des 💪 et sauvegarder tes séances en ligne.</p></div>
+        <button class="btn primary block big" data-a="acc-signup">Créer un compte</button>
+        <button class="btn ghost block" data-a="acc-login">J’ai déjà un compte</button>
+        <p class="muted small center">Tes séances restent privées : seuls les amis que tu acceptes peuvent les voir.</p>`,
+    };
+  }
+  const p = st.profile || {};
+  const feed = st.friends.length ? fetchOnce('feed', () => cl.feed(10), 30000) : [];
+  const reqs = st.requests.map(r => `<div class="card req"><div class="avatar sm">${esc((r.name || '?')[0].toUpperCase())}</div>
+      <div class="grow"><b>${esc(r.name)}</b><div class="muted small">veut devenir ton ami</div></div>
+      <button class="btn primary small" data-a="req-ok" data-uid="${r.uid}">Accepter</button>
+      <button class="icon" data-a="req-no" data-uid="${r.uid}" aria-label="Refuser">✕</button></div>`).join('');
+  const tab = ui.friendsTab || 'feed';
+  let body;
+  if (tab === 'feed') {
+    if (!st.friends.length) body = `<div class="empty">Ajoute ta conjointe ou tes amis avec leur code ami pour voir leurs séances ici.</div>`;
+    else if (feed === undefined) body = loader;
+    else if (!feed || !feed.length) body = `<div class="empty">Tes amis n’ont pas encore enregistré de séance.</div>`;
+    else body = feed.slice(0, 40).map(w => workoutCard(w, (st.friends.find(f => f.uid === w.owner) || {}).name || 'Ami')).join('');
+  } else {
+    body = st.friends.length ? `<div class="menu-links">${st.friends.map(f => `<a class="list-item" href="#/friend/${f.uid}">
+        <div class="avatar sm">${esc((f.name || '?')[0].toUpperCase())}</div><span class="grow"><b>${esc(f.name)}</b></span><span class="muted">›</span></a>`).join('')}</div>`
+      : `<div class="empty">Aucun ami pour l’instant.</div>`;
+  }
+  return {
+    title: 'Amis',
+    actions: `<button class="icon" data-a="feed-refresh" aria-label="Actualiser">↻</button>`,
+    html: `<div class="card code-card">
+        <div class="muted small">Ton code ami</div>
+        <div class="row-between"><div class="friend-code">${esc(p.code || '…')}</div>
+        <button class="btn primary small" data-a="share-code">Partager</button></div>
+        <div class="add-friend"><input id="friend-code" placeholder="Code d’un ami (ex. BOBY-4F2K)" autocomplete="off" autocapitalize="characters">
+        <button class="btn ghost" data-a="add-friend">Ajouter</button></div>
+      </div>
+      ${reqs ? `<h2 class="section">Demandes reçues</h2>${reqs}` : ''}
+      ${chips([['feed', 'Fil d’actualité'], ['list', `Mes amis (${st.friends.length})`]], tab, 'friends-tab')}
+      ${body}`,
+  };
+}
+
+function vFriend(fid) {
+  const cl = C();
+  if (!cl || !cl.state.user) { location.hash = '#/friends'; return { title: '', html: '' }; }
+  const f = cl.state.friends.find(x => x.uid === fid);
+  if (!f) return { title: 'Ami', back: '#/friends', html: `<div class="empty">Cette personne ne fait plus partie de tes amis.</div>` };
+  const ws = fetchOnce('fws/' + fid, () => cl.friendWorkouts(fid, 100));
+  let html;
+  if (ws === undefined) html = loader;
+  else if (!ws) html = `<div class="empty">Impossible de charger ses séances.</div>`;
+  else {
+    const totVol = ws.reduce((a, w) => a + workoutTotals(w).vol, 0);
+    const totDur = ws.reduce((a, w) => a + (w.end - w.start), 0);
+    const cur = weekStart(Date.now()), weeks = [];
+    for (let i = 11; i >= 0; i--) {
+      const s = cur - i * 7 * DAY, d = new Date(s);
+      weeks.push({ label: `${d.getDate()}/${d.getMonth() + 1}`, v: ws.filter(w => w.start >= s && w.start < s + 7 * DAY).length });
+    }
+    const since = Date.now() - 30 * DAY, mus = {};
+    for (const w of ws) if (w.start >= since) for (const e of w.exercises) mus[exMuscle(e)] = (mus[exMuscle(e)] || 0) + e.sets.filter(s => s.t !== 'w').length;
+    const musList = Object.entries(mus).sort((a, b) => b[1] - a[1]);
+    const musMax = Math.max(1, ...musList.map(m => m[1]));
+    const prs = ws.reduce((a, w) => a + (w.prs || []).length, 0);
+    html = `<div class="card"><div class="stats3">${stat('Séances', ws.length)}${stat('Temps total', fmtDur(totDur))}${stat('Records 🏆', prs)}</div>
+        <div class="muted small">Volume total : ${fmtW(totVol)}${ws.length >= 100 ? ' (100 dernières séances)' : ''}</div></div>
+      <div class="card"><div class="card-title">Séances par semaine</div>${barChart(weeks, v => v)}</div>
+      ${musList.length ? `<div class="card"><div class="card-title">Muscles travaillés (30 jours)</div>${musList.map(([m, n]) => `<div class="mbar"><span>${esc(m)}</span><div class="mbar-track"><div class="mbar-fill" style="width:${n / musMax * 100}%"></div></div><b>${n}</b></div>`).join('')}</div>` : ''}
+      <h2 class="section">Ses séances</h2>
+      ${ws.length ? ws.slice(0, 30).map(w => workoutCard(w)).join('') : `<div class="empty">Pas encore de séance.</div>`}`;
+  }
+  return {
+    title: esc(f.name), back: '#/friends',
+    actions: `<button class="icon" data-a="friend-menu" data-uid="${fid}" aria-label="Options">⋯</button>`,
+    html: `<div class="profile-head"><div class="avatar">${esc((f.name || '?')[0].toUpperCase())}</div>
+      <div><h2>${esc(f.name)}</h2><div class="muted">Ami depuis ${f.since ? fmtDate(f.since) : '…'}</div></div></div>${html}`,
+  };
+}
+
+function vFriendWorkout(fid, wid) {
+  const cl = C();
+  if (!cl || !cl.state.user) { location.hash = '#/friends'; return { title: '', html: '' }; }
+  const key = `fw/${fid}/${wid}`;
+  const w = fetchOnce(key, () => cl.friendWorkout(fid, wid), 15000);
+  const f = cl.state.friends.find(x => x.uid === fid) || { name: 'Ami' };
+  if (w === undefined) return { title: 'Séance', back: '#/friend/' + fid, html: loader };
+  if (!w) return { title: 'Séance', back: '#/friend/' + fid, html: `<div class="empty">Séance introuvable.</div>` };
+  const mine = (w.reactions || {})[cl.state.user.uid];
+  const list = Object.values(w.reactions || {});
+  return {
+    title: esc(f.name), back: '#/friend/' + fid,
+    html: `${workoutHead(w)}
+      <div class="card"><div class="card-title">Réagir</div>
+        <div class="react-bar">${REACTIONS.map(e => `<button class="react-btn ${mine && mine.e === e ? 'on' : ''}" data-a="react" data-owner="${fid}" data-wid="${wid}" data-e="${e}">${e}</button>`).join('')}</div>
+        ${list.length ? `<div class="react-who">${list.map(r => `<span>${r.e} ${esc(r.n)}</span>`).join('')}</div>` : ''}
+      </div>
+      ${workoutBlocks(w, false)}`,
+  };
+}
+
+function accountForm(mode) {
+  const signup = mode === 'signup';
+  openSheet(`<h2>${signup ? 'Créer un compte' : 'Se connecter'}</h2>
+    ${signup ? `<label class="field">Pseudo (visible par tes amis)<input id="acc-name" value="${esc(db.settings.name)}" placeholder="Ex. Boby" maxlength="24"></label>` : ''}
+    <label class="field">Adresse e-mail<input id="acc-email" type="email" autocomplete="email" placeholder="toi@exemple.fr"></label>
+    <label class="field">Mot de passe${signup ? ' (6 caractères minimum)' : ''}<input id="acc-pw" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}"></label>
+    <p class="form-err" id="acc-err"></p>
+    <button class="btn primary block" data-a="acc-submit" data-mode="${mode}">${signup ? 'Créer mon compte' : 'Me connecter'}</button>
+    ${signup ? '' : `<button class="btn ghost block" data-a="acc-reset">Mot de passe oublié ?</button>`}
+    <button class="btn ghost block" data-a="close-modal">Annuler</button>`);
+}
+
+/* Synchronisation : au moment de la connexion, on fusionne le téléphone et le compte en ligne */
+const packFor = w => C().packWorkout(w, ex, workoutTotals(w));
+const privateData = () => ({ routines: db.routines, custom: db.custom, measures: db.measures, settings: { height: db.settings.height ?? null, age: db.settings.age ?? null, ageYear: db.settings.ageYear ?? null, unit: db.settings.unit } });
+let lastPrivate = '', privTimer = null;
+function schedulePrivatePush() {
+  const cl = C();
+  if (!cl || !cl.state.user) return;
+  clearTimeout(privTimer);
+  privTimer = setTimeout(() => {
+    const json = JSON.stringify(privateData());
+    if (json === lastPrivate) return;
+    lastPrivate = json;
+    cl.pushPrivate(privateData()).catch(() => { lastPrivate = ''; });
+  }, 2500);
+}
+function cloudPushWorkout(w) {
+  const cl = C();
+  if (!cl || !cl.state.user) return;
+  cl.pushWorkout(w, ex, workoutTotals(w)).catch(() => {});
+  const last = db.workouts.reduce((a, x) => Math.max(a, x.start), 0);
+  cl.pushStats(db.workouts.length, last).catch(() => {});
+}
+async function syncOnLogin() {
+  const cl = C();
+  try {
+    const { workouts, priv } = await cl.pullAll();
+    const local = new Set(db.workouts.map(w => w.id));
+    const remote = new Set(workouts.map(w => w.id));
+    let added = 0;
+    for (const w of workouts) if (!local.has(w.id)) {
+      const { vol, sets, reactions, ...rest } = w;
+      db.workouts.push(rest);
+      added++;
+    }
+    if (priv) {
+      const merge = (a, b) => { const ids = new Set(a.map(x => x.id)); return [...a, ...(b || []).filter(x => !ids.has(x.id))]; };
+      db.routines = merge(db.routines, priv.routines);
+      db.custom = merge(db.custom, priv.custom);
+      db.measures = merge(db.measures, priv.measures);
+      if (priv.settings) for (const k of ['height', 'age', 'ageYear']) if (db.settings[k] == null && priv.settings[k] != null) db.settings[k] = priv.settings[k];
+      rebuildEx();
+    }
+    const toPush = db.workouts.filter(w => !remote.has(w.id)).map(packFor);
+    if (toPush.length) await cl.pushMany(toPush);
+    if (!db.settings.name && cl.state.profile) db.settings.name = cl.state.profile.name;
+    save();
+    lastPrivate = '';
+    schedulePrivatePush();
+    const last = db.workouts.reduce((a, x) => Math.max(a, x.start), 0);
+    cl.pushStats(db.workouts.length, last).catch(() => {});
+    if (added || toPush.length) toast(`Synchronisé ✔ ${added ? added + ' séance(s) récupérée(s)' : toPush.length + ' séance(s) sauvegardée(s) en ligne'}`);
+    render();
+  } catch (e) {
+    console.warn('sync', e);
+  }
 }
 
 function vTrain() {
@@ -394,7 +626,8 @@ function vActive() {
   return {
     title: a.editingId ? 'Modifier la séance' : 'Séance en cours',
     back: '#/home', backIcon: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
-    actions: `<button class="btn primary small" data-a="finish">${a.editingId ? 'Enregistrer' : 'Terminer'}</button>`,
+    actions: `${a.editingId ? '' : `<button class="icon" data-a="manual-rest" aria-label="Minuteur de repos"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M19 5l1.5 1.5"/></svg></button>`}
+      <button class="btn primary small" data-a="finish">${a.editingId ? 'Enregistrer' : 'Terminer'}</button>`,
     html: `<div class="active-stats">
         <div><div class="stat-l">Durée</div><div class="stat-v" id="chrono">${fmtClock((a.editingId ? a.end : Date.now()) - a.start)}</div></div>
         <div><div class="stat-l">Volume</div><div class="stat-v" id="a-vol">${fmtW(t.vol)}</div></div>
@@ -612,6 +845,12 @@ function vSettings() {
         <label class="set-row"><span>Thème</span>${sel('theme', [['dark', 'Sombre'], ['light', 'Clair'], ['auto', 'Comme le téléphone']])}</label>
         <div class="set-row"><span>Couleur</span><div class="swatches">${Object.entries(ACCENTS).map(([k, c]) => `<button class="swatch ${s.accent === k ? 'on' : ''}" style="background:${c}" data-a="accent" data-v="${k}" aria-label="${k}"></button>`).join('')}</div></div>
       </div>
+      <h2 class="section">Compte en ligne</h2>
+      <div class="card">${C() && C().state.user
+        ? `<p class="muted small">Connecté avec <b>${esc(C().state.user.email)}</b>${C().state.profile ? ` · pseudo <b>${esc(C().state.profile.name)}</b> · code <b>${esc(C().state.profile.code)}</b>` : ''}.<br>Tes séances sont sauvegardées en ligne automatiquement.</p>
+           <button class="btn ghost block" data-a="logout">Se déconnecter</button>`
+        : `<p class="muted small">Crée un compte gratuit pour sauvegarder tes séances en ligne et voir la progression de tes amis.</p>
+           <a class="btn primary block" href="#/friends">Créer un compte / Se connecter</a>`}</div>
       <h2 class="section">Sauvegarde</h2>
       <div class="card">
         <p class="muted small">Tes données sont enregistrées uniquement sur ce téléphone. Fais une sauvegarde de temps en temps (par exemple dans tes fichiers ou Google Drive) pour ne rien perdre si tu changes de téléphone.</p>
@@ -697,7 +936,7 @@ function bmiInfo() {
 }
 
 /* ---------- Rendu principal ---------- */
-const TAB_OF = { home: 'home', workout: 'home', train: 'train', routine: 'train', active: 'train', exercises: 'exercises', exercise: 'exercises', profile: 'profile', measures: 'profile', settings: 'profile' };
+const TAB_OF = { home: 'home', workout: 'home', train: 'train', routine: 'train', active: 'train', exercises: 'exercises', exercise: 'exercises', profile: 'profile', measures: 'profile', settings: 'profile', friends: 'friends', friend: 'friends', fworkout: 'friends' };
 function render() {
   if (!db.settings.onboarded) { renderOnboarding(); return; }
   const hash = location.hash || '#/home';
@@ -716,6 +955,9 @@ function render() {
     case 'profile': v = vProfile(); break;
     case 'measures': v = vMeasures(); break;
     case 'settings': v = vSettings(); break;
+    case 'friends': v = vFriends(); break;
+    case 'friend': v = vFriend(route[1]); break;
+    case 'fworkout': v = vFriendWorkout(route[1], route[2]); break;
     default: v = vNotFound();
   }
   document.body.classList.toggle('in-active', r === 'active');
@@ -723,6 +965,9 @@ function render() {
     <h1>${v.title}</h1><div class="acts">${v.actions || ''}</div>`;
   $('#view').innerHTML = v.html;
   $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === TAB_OF[r]));
+  const nreq = C() && C().state.user ? C().state.requests.length : 0;
+  const badge = $('#nav-badge');
+  if (badge) { badge.hidden = !nreq; badge.textContent = nreq; }
   renderActiveBar();
   renderRestBar(true);
   if (hash !== lastHash) { window.scrollTo(0, 0); lastHash = hash; }
@@ -890,6 +1135,8 @@ function finishSave() {
   w.prs = computePRs(w);
   if (editing) db.workouts = db.workouts.map(x => x.id === w.id ? w : x);
   else db.workouts.push(w);
+  cloudPushWorkout(w);
+  delete net[`fw/${C()?.state.user?.uid}/${w.id}`];
   db.active = null;
   save();
   releaseWake();
@@ -1000,6 +1247,84 @@ async function shareApp() {
 
 /* ---------- Actions (clics) ---------- */
 const A = {
+  // Minuteur lancé à la main (bouton ⏱ en haut de la séance)
+  'manual-rest': () => {
+    const r = db.active.rest;
+    menu(r ? `Repos en cours : ${fmtClock(r.end - Date.now() + 999)}` : 'Lancer un minuteur de repos',
+      [30, 45, 60, 90, 120, 150, 180, 240, 300].map(s => ({ label: '⏱ ' + fmtSec(s), fn: () => { unlockAudio(); startRest(s); } }))
+        .concat(r ? [{ label: '⏹ Arrêter le minuteur', danger: true, fn: () => { db.active.rest = null; save(); renderRestBar(); } }] : []));
+  },
+  /* Compte et amis */
+  'acc-signup': () => accountForm('signup'),
+  'acc-login': () => accountForm('login'),
+  'acc-submit': async (d, el) => {
+    const cl = C(); if (!cl) return;
+    const email = $('#acc-email').value.trim(), pw = $('#acc-pw').value;
+    const err = $('#acc-err');
+    const name = d.mode === 'signup' ? $('#acc-name').value.trim() : '';
+    if (d.mode === 'signup' && name.length < 2) { err.textContent = 'Choisis un pseudo (2 caractères minimum).'; return; }
+    el.disabled = true; el.textContent = 'Patiente…';
+    try {
+      if (d.mode === 'signup') { await cl.signUp(name, email, pw); if (!db.settings.name) { db.settings.name = name; save(); } }
+      else await cl.signIn(email, pw);
+      closeModal();
+      toast(d.mode === 'signup' ? 'Compte créé ✔ Bienvenue !' : 'Connecté ✔');
+    } catch (e) {
+      err.textContent = cl.errMsg(e);
+      el.disabled = false; el.textContent = d.mode === 'signup' ? 'Créer mon compte' : 'Me connecter';
+    }
+  },
+  'acc-reset': async () => {
+    const email = $('#acc-email').value.trim();
+    if (!email) { $('#acc-err').textContent = 'Écris d’abord ton adresse e-mail au-dessus.'; return; }
+    try { await C().resetPassword(email); $('#acc-err').textContent = ''; toast('E-mail envoyé ✔ Regarde ta boîte mail (et les spams)'); }
+    catch (e) { $('#acc-err').textContent = C().errMsg(e); }
+  },
+  'logout': () => confirmBox('Te déconnecter ? Tes séances restent sur ce téléphone.', 'Me déconnecter', () => { C().signOut(); for (const k in net) delete net[k]; toast('Déconnecté'); }, false),
+  'share-code': async () => {
+    const code = C().state.profile.code;
+    const text = `Ajoute-moi sur BobyMusc 💪 Mon code ami : ${code}\n${APP_URL}`;
+    try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(text); toast('Code copié ✔ Colle-le dans un message'); } catch (e) { toast(code); }
+  },
+  'add-friend': async (d, el) => {
+    const code = $('#friend-code').value;
+    if (!code.trim()) { toast('Écris le code de ton ami'); return; }
+    el.disabled = true;
+    try {
+      const r = await C().addFriend(code);
+      toast(r === 'accepted' ? 'Vous êtes maintenant amis ✔' : 'Demande envoyée ✔ Ton ami doit l’accepter');
+      $('#friend-code').value = '';
+    } catch (e) { toast(C().errMsg(e)); }
+    el.disabled = false;
+  },
+  'req-ok': async d => {
+    const r = C().state.requests.find(x => x.uid === d.uid);
+    try { await C().accept(r); toast(`${r.name} est maintenant ton ami ✔`); delete net.feed; } catch (e) { toast(C().errMsg(e)); }
+  },
+  'req-no': d => {
+    const r = C().state.requests.find(x => x.uid === d.uid);
+    confirmBox(`Refuser la demande de ${esc(r.name)} ?`, 'Refuser', () => C().refuse(r).catch(e => toast(C().errMsg(e))));
+  },
+  'friends-tab': d => { ui.friendsTab = d.v; render(); },
+  'feed-refresh': () => { for (const k in net) delete net[k]; render(); toast('Actualisé'); },
+  'friend-menu': d => {
+    const f = C().state.friends.find(x => x.uid === d.uid);
+    menu(f.name, [{ label: '🗑 Retirer de mes amis', danger: true, fn: () => confirmBox(`Retirer ${esc(f.name)} de tes amis ? Vous ne verrez plus vos séances.`, 'Retirer', async () => {
+      try { await C().removeFriend(f.uid); delete net.feed; location.hash = '#/friends'; } catch (e) { toast(C().errMsg(e)); }
+    }) }]);
+  },
+  'react': async d => {
+    const key = `fw/${d.owner}/${d.wid}`, w = net[key] && net[key].data;
+    if (!w) return;
+    const me = C().state.user.uid, cur = (w.reactions || {})[me];
+    const emoji = cur && cur.e === d.e ? null : d.e;
+    // Mise à jour immédiate à l'écran, puis envoi
+    w.reactions = { ...(w.reactions || {}) };
+    if (emoji) w.reactions[me] = { e: emoji, n: C().state.profile.name }; else delete w.reactions[me];
+    render();
+    try { await C().react(d.owner, d.wid, emoji); delete net.feed; } catch (e) { toast(C().errMsg(e)); }
+  },
   'ob-unit': d => { db.settings.unit = d.v; save(); renderOnboarding(); },
   'ob-adj': d => {
     const st = OB_STEPS[ob.step], dir = +d.d;
@@ -1035,7 +1360,7 @@ const A = {
       { label: '✏️ Modifier la séance', fn: () => editWorkout(w.id) },
       { label: '📋 Enregistrer comme programme', fn: () => { db.routines.push(routineFromExercises(w.name, w.exercises)); save(); toast('Programme créé ✔'); } },
       { label: '📤 Partager', fn: () => shareWorkout(w) },
-      { label: '🗑 Supprimer la séance', danger: true, fn: () => confirmBox('Supprimer définitivement cette séance ?', 'Supprimer', () => { db.workouts = db.workouts.filter(x => x.id !== w.id); save(); location.hash = '#/home'; }) },
+      { label: '🗑 Supprimer la séance', danger: true, fn: () => confirmBox('Supprimer définitivement cette séance ?', 'Supprimer', () => { db.workouts = db.workouts.filter(x => x.id !== w.id); save(); if (C()?.state.user) C().deleteWorkout(w.id).catch(() => {}); location.hash = '#/home'; }) },
     ]);
   },
   'routine-menu': d => {
@@ -1254,12 +1579,26 @@ window.addEventListener('hashchange', () => {
   if (afterNav) { const f = afterNav; afterNav = null; f(); }
 });
 
+/* ---------- Partie en ligne ---------- */
+window.addEventListener('cloud-change', () => {
+  if (!db.settings.onboarded) return;
+  const nreq = C().state.user ? C().state.requests.length : 0;
+  const badge = $('#nav-badge');
+  if (badge) { badge.hidden = !nreq; badge.textContent = nreq; }
+  refreshIfVisible();
+});
+window.addEventListener('cloud-login', () => syncOnLogin());
+function loadCloud() {
+  import('./cloud.js').catch(e => { console.warn('cloud', e); cloudFailed = true; refreshIfVisible(); });
+}
+
 /* ---------- Démarrage ---------- */
 load();
 rebuildEx();
 applyTheme();
 render();
 setInterval(tick, 500);
+loadCloud();
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
