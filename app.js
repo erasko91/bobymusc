@@ -1,8 +1,8 @@
 'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.1.0';
-const APP_URL = 'https://erasko91.github.io/bobymusc/';
+const VERSION = '1.2.0';
+const APP_URL = 'https://bobymusc-app.web.app/';
 const KEY = 'bobmusc-data-v1';
 const LB = 2.20462;
 const DAY = 86400000;
