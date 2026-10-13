@@ -1,8 +1,8 @@
 'use strict';
-/* BobMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
+/* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.0.0';
-const APP_URL = 'https://erasko91.github.io/bobmusc/';
+const VERSION = '1.0.1';
+const APP_URL = 'https://erasko91.github.io/bobymusc/';
 const KEY = 'bobmusc-data-v1';
 const LB = 2.20462;
 const DAY = 86400000;
@@ -307,7 +307,7 @@ function vHome() {
   const name = db.settings.name ? esc(db.settings.name) : 'champion';
   const list = ws.slice(0, ui.histLimit).map(workoutCard).join('');
   return {
-    title: '<span class="logo">Bob<b>Musc</b></span>',
+    title: '<span class="logo">Boby<b>Musc</b></span>',
     actions: `<a class="icon" href="#/settings" aria-label="Réglages">⚙️</a>`,
     html: `<p class="hello">Salut ${name} 👋</p>
     ${db.active ? '' : `<button class="btn primary block big" data-a="start-empty">＋ Démarrer une séance</button>`}
@@ -547,7 +547,7 @@ function vProfile() {
       <div class="menu-links">
         <a class="list-item" href="#/measures">📏 <span class="grow">Mesures du corps</span><span class="muted">›</span></a>
         <a class="list-item" href="#/settings">⚙️ <span class="grow">Réglages et sauvegarde</span><span class="muted">›</span></a>
-        <button class="list-item" data-a="share-app">📤 <span class="grow">Partager BobMusc à un ami</span><span class="muted">›</span></button>
+        <button class="list-item" data-a="share-app">📤 <span class="grow">Partager BobyMusc à un ami</span><span class="muted">›</span></button>
       </div>`,
   };
 }
@@ -620,10 +620,10 @@ function vSettings() {
         <input type="file" id="import-file" accept=".json,application/json" hidden>
       </div>
       <div class="card">
-        <button class="btn ghost block" data-a="share-app">📤 Partager BobMusc à un ami</button>
+        <button class="btn ghost block" data-a="share-app">📤 Partager BobyMusc à un ami</button>
         <button class="btn danger-ghost block" data-a="wipe">Effacer toutes mes données</button>
       </div>
-      <p class="muted small center">BobMusc ${VERSION} · 100 % gratuit, sans pub, sans compte</p>`,
+      <p class="muted small center">BobyMusc ${VERSION} · 100 % gratuit, sans pub, sans compte</p>`,
   };
 }
 
@@ -647,7 +647,7 @@ function renderOnboarding() {
   $('#restbar').hidden = true;
   $('#view').innerHTML = `<div class="ob">
     <div class="ob-top">
-      ${ob.step ? `<button class="icon back" data-a="ob-back" aria-label="Retour">‹</button>` : '<span class="logo">Bob<b>Musc</b></span>'}
+      ${ob.step ? `<button class="icon back" data-a="ob-back" aria-label="Retour">‹</button>` : '<span class="logo">Boby<b>Musc</b></span>'}
       <div class="ob-progress">${OB_STEPS.map((_, i) => `<span class="${i <= ob.step ? 'on' : ''}"></span>`).join('')}</div>
       <span class="muted small">${ob.step + 1}/${OB_STEPS.length}</span>
     </div>
@@ -901,7 +901,7 @@ let afterNav = null;
 function celebrate(w) {
   const n = db.workouts.length, t = workoutTotals(w);
   openSheet(`<div class="celebrate"><div class="big-emoji">💪</div><h2>Bravo !</h2>
-    <p class="muted">C’est ta ${n === 1 ? '1re' : n + 'e'} séance avec BobMusc.</p>
+    <p class="muted">C’est ta ${n === 1 ? '1re' : n + 'e'} séance avec BobyMusc.</p>
     <div class="stats3">${stat('Durée', fmtDur(w.end - w.start))}${stat('Volume', fmtW(t.vol))}${stat('Séries', t.sets)}</div>
     ${w.prs.length ? `<h3>🏆 ${w.prs.length} nouveau${w.prs.length > 1 ? 'x' : ''} record${w.prs.length > 1 ? 's' : ''} !</h3>
       <div class="pr-list">${w.prs.map(p => `<span class="badge">${esc(ex(p.ex).name)} · ${esc(p.label)} : ${esc(PR_KEYS[ex(p.ex).type].find(k => k[0] === p.k)[2](p.v))}</span>`).join('')}</div>` : ''}
@@ -955,12 +955,12 @@ let customCb = null;
 
 /* ---------- Sauvegarde fichier ---------- */
 async function exportData() {
-  const name = `bobmusc-sauvegarde-${isoDay(Date.now())}.json`;
+  const name = `bobymusc-sauvegarde-${isoDay(Date.now())}.json`;
   const blob = new Blob([JSON.stringify(db)], { type: 'application/json' });
   try {
     const file = new File([blob], name, { type: 'application/json' });
     if (navigator.canShare && navigator.canShare({ files: [file] }) && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
-      await navigator.share({ files: [file], title: 'Sauvegarde BobMusc' });
+      await navigator.share({ files: [file], title: 'Sauvegarde BobyMusc' });
       return;
     }
   } catch (e) { if (e.name === 'AbortError') return; }
@@ -978,7 +978,7 @@ function importData(file) {
   rd.onload = () => {
     let d;
     try { d = JSON.parse(rd.result); } catch (e) { d = null; }
-    if (!d || !Array.isArray(d.workouts)) { toast('Ce fichier n’est pas une sauvegarde BobMusc'); return; }
+    if (!d || !Array.isArray(d.workouts)) { toast('Ce fichier n’est pas une sauvegarde BobyMusc'); return; }
     confirmBox(`Remplacer tes données actuelles par cette sauvegarde (${d.workouts.length} séances) ?`, 'Importer', () => {
       localStorage.setItem(KEY, JSON.stringify(d));
       load(); rebuildEx(); applyTheme();
@@ -990,7 +990,7 @@ function importData(file) {
   rd.readAsText(file);
 }
 async function shareApp() {
-  const data = { title: 'BobMusc', text: 'BobMusc, mon appli de muscu 100 % gratuite. Ouvre le lien puis « Ajouter à l’écran d’accueil » :', url: APP_URL };
+  const data = { title: 'BobyMusc', text: 'BobyMusc, mon appli de muscu 100 % gratuite. Ouvre le lien puis « Ajouter à l’écran d’accueil » :', url: APP_URL };
   try {
     if (navigator.share) { await navigator.share(data); return; }
   } catch (e) { if (e.name === 'AbortError') return; }
@@ -1190,7 +1190,7 @@ function shareWorkout(w) {
   const lines = [`💪 ${w.name} · ${fmtDate(w.start)}`, `⏱ ${fmtDur(w.end - w.start)} · 🏋️ ${fmtW(t.vol)}`, ''];
   for (const e of w.exercises) lines.push(`${ex(e.ex).name} : ${e.sets.map(s => fmtSet(s, ex(e.ex).type)).join(', ')}`);
   if (w.prs && w.prs.length) lines.push('', `🏆 ${w.prs.length} record(s) !`);
-  lines.push('', 'Noté avec BobMusc : ' + APP_URL);
+  lines.push('', 'Noté avec BobyMusc : ' + APP_URL);
   const text = lines.join('\n');
   if (navigator.share) navigator.share({ text }).catch(() => {});
   else navigator.clipboard.writeText(text).then(() => toast('Séance copiée ✔'), () => toast('Partage impossible'));

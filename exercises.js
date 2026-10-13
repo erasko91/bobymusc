@@ -1,5 +1,5 @@
 'use strict';
-/* Bibliothèque d'exercices de BobMusc.
+/* Bibliothèque d'exercices de BobyMusc.
    type : wr = poids + reps, bw = reps seulement, time = durée (secondes), cardio = distance + minutes */
 
 const MUSCLES = ['Pectoraux', 'Dos', 'Épaules', 'Biceps', 'Triceps', 'Avant-bras', 'Abdos', 'Quadriceps',

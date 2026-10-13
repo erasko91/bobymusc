@@ -1,6 +1,6 @@
-/* BobMusc — permet à l'appli de marcher sans internet.
+/* BobyMusc — permet à l'appli de marcher sans internet.
    Changer CACHE à chaque nouvelle version pour que les téléphones la récupèrent. */
-const CACHE = 'bobmusc-1.0.0';
+const CACHE = 'bobymusc-1.0.1';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'exercises.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
