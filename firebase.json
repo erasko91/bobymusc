@@ -7,7 +7,7 @@
     "public": ".",
     "ignore": [
       "firebase.json", "firestore.rules", ".firebaserc", ".gitignore", ".git/**",
-      "**/.*", "**/node_modules/**", "firebase-debug.log"
+      "**/.*", "**/node_modules/**", "firebase-debug.log", "outils/**"
     ],
     "headers": [
       {
