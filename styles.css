@@ -393,6 +393,58 @@ body.in-chat { padding-bottom: calc(76px + var(--safe-b)); }
 .sheet.photo { padding: 10px 10px calc(10px + var(--safe-b)); }
 .photo-full { width: 100%; max-height: 72vh; object-fit: contain; border-radius: 12px; display: block; margin-bottom: 8px; background: #000; }
 
+/* Motivation */
+.block { display: block; }
+img.avatar { object-fit: cover; padding: 0; background: var(--card2); }
+.avatar.xl { width: 96px; height: 96px; font-size: 40px; }
+.avatar-edit { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.avatar-edit > div { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.bio { margin: -4px 0 14px; white-space: pre-wrap; }
+.bio-add { margin: -8px 0 10px; padding: 4px 0; }
+.streak-card { display: flex; align-items: center; gap: 14px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--card)), var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
+.streak-card .flame { font-size: 34px; }
+.streak-card.off { background: var(--card); border-color: var(--line); }
+.streak-card.off .flame { filter: grayscale(1); opacity: .5; }
+.recap-teaser { display: flex; align-items: center; gap: 12px; font-size: 26px; }
+.recap-teaser b, .recap-teaser .small { display: block; font-size: 15px; }
+.recap-teaser .small { font-size: 13px; }
+.stats-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.streak-mini .stat-v { font-size: 16px; margin-top: 4px; }
+.badge-row { display: flex; gap: 6px; font-size: 28px; flex-wrap: wrap; }
+.badge-row .locked { filter: grayscale(1); opacity: .3; }
+.badge-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.badge-tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 12px; display: flex; flex-direction: column; gap: 4px; text-align: center; align-items: center; }
+.badge-tile .b-icon { font-size: 38px; filter: grayscale(1); opacity: .35; }
+.badge-tile.ok { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.badge-tile.ok .b-icon { filter: none; opacity: 1; }
+.badge-tile .mbar-track { width: 100%; height: 6px; margin-top: 4px; }
+.b-done { color: var(--ok); font-weight: 700; font-size: 13px; }
+.big-track { height: 12px; margin-top: 10px; }
+.goal { padding: 6px 0; }
+.goal + .goal { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; }
+.goal .mbar-track { height: 10px; margin: 8px 0 4px; }
+.goal.done .mbar-fill { background: var(--ok); }
+.goal-card { display: flex; align-items: center; gap: 8px; }
+.goal-card .goal { flex: 1; }
+.recap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.recap-grid .card { margin: 0; }
+.recap-v { font-size: 24px; font-weight: 800; margin: 2px 0; white-space: nowrap; }
+.diff { font-size: 13px; font-weight: 700; }
+.diff.up { color: var(--ok); }
+.diff.down { color: var(--danger); }
+.recap-grid + .card { margin-top: 12px; }
+.body-map { width: 100%; max-width: 380px; display: block; margin: 4px auto 0; }
+.body-map .lbl { fill: var(--muted); font-size: 13px; font-weight: 600; }
+.body-map [data-m] { stroke: var(--bg); stroke-width: 1.5; transition: fill .3s; }
+.map-legend { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 12px; color: var(--muted); margin: 6px 0 12px; }
+.map-legend i { width: 18px; height: 10px; border-radius: 3px; display: inline-block; }
+.map-legend span { margin: 0 4px; }
+.new-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 8px 0 14px; }
+.new-badges div { display: flex; flex-direction: column; align-items: center; background: var(--card2); border-radius: 14px; padding: 10px 12px; min-width: 92px; }
+.new-badges span { font-size: 34px; }
+.new-badges b { font-size: 13px; }
+.celebrate > .muted.small { margin-bottom: 14px; }
+
 /* Premier lancement */
 body.onboarding { padding-bottom: 0; }
 body.onboarding #top, body.onboarding #nav { display: none; }

@@ -128,6 +128,8 @@ const Cloud = {
   async rename(name) {
     await updateDoc(uref(state.user.uid), { name });
   },
+  // Photo (petite image ≈ 20 Ko) et bio, visibles par les amis
+  updateProfile: fields => updateDoc(uref(state.user.uid), fields),
   // Mode privé : les amis ne peuvent plus lire mes séances (vérifié par les règles de sécurité)
   setPrivate: priv => updateDoc(uref(state.user.uid), { private: !!priv }),
   // Efface tout ce qui m'appartient en ligne, puis le compte lui-même

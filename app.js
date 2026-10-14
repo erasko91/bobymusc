@@ -1,7 +1,7 @@
 'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const APP_URL = 'https://bobymusc-app.web.app/';
 const KEY = 'bobmusc-data-v1';
 const LB = 2.20462;
@@ -311,14 +311,14 @@ function exIcon(e) {
   return `<div class="ex-icon m-${norm(e.muscle).replace(/[^a-z]/g, '')}">${esc(letters)}</div>`;
 }
 // author : nom de l'ami qui a fait la séance (fil d'actualité)
-function workoutCard(w, author = null) {
+function workoutCard(w, author = null, authorImg = null) {
   const t = workoutTotals(w);
   const href = w.owner ? `#/fworkout/${w.owner}/${w.id}` : `#/workout/${w.id}`;
   const lines = w.exercises.slice(0, 4).map(e => `<li><span class="muted">${e.sets.length} ×</span> ${esc(exName(e))}</li>`).join('');
   const more = w.exercises.length > 4 ? `<li class="muted">et ${w.exercises.length - 4} autre${w.exercises.length > 5 ? 's' : ''}…</li>` : '';
   const reacts = reactionSummary(w);
   return `<a class="card wcard" href="${href}">
-    ${author ? `<div class="author"><div class="avatar sm">${esc(author[0].toUpperCase())}</div><b>${esc(author)}</b></div>` : ''}
+    ${author ? `<div class="author">${avatarHtml(author, authorImg, 'sm')}<b>${esc(author)}</b></div>` : ''}
     <div class="wcard-top"><div><div class="wcard-name">${esc(w.name)}</div><div class="muted small">${fmtDate(w.start)} · ${timeFmt.format(new Date(w.start))}</div></div>
     ${w.prs && w.prs.length ? `<span class="badge">🏆 ${w.prs.length}</span>` : ''}</div>
     <div class="mini-stats"><span>⏱ ${fmtDur(w.end - w.start)}</span>${t.vol ? `<span>🏋️ ${fmtW(t.vol)}</span>` : ''}<span>✔ ${t.sets} série${t.sets > 1 ? 's' : ''}</span></div>
@@ -375,6 +375,7 @@ function vHome() {
     actions: `<a class="icon" href="#/settings" aria-label="Réglages">⚙️</a>`,
     html: `<p class="hello">Salut ${name} 👋</p>
     ${db.active ? '' : `<button class="btn primary block big" data-a="start-empty">＋ Démarrer une séance</button>`}
+    ${homeMotivation()}
     <div class="card">
       <div class="card-title">Cette semaine</div>
       <div class="stats3">${stat('Séances', tw.n)}${stat('Durée', fmtDur(tw.dur))}${stat('Volume', fmtW(tw.vol))}</div>
@@ -449,6 +450,7 @@ function vFriends() {
   }
   const p = st.profile || {};
   const feed = st.friends.length ? fetchOnce('feed', () => cl.feed(10), 30000) : [];
+  const profs = friendProfiles();
   const reqs = st.requests.map(r => `<div class="card req"><div class="avatar sm">${esc((r.name || '?')[0].toUpperCase())}</div>
       <div class="grow"><b>${esc(r.name)}</b><div class="muted small">veut devenir ton ami</div></div>
       <button class="btn primary small" data-a="req-ok" data-uid="${r.uid}">Accepter</button>
@@ -459,12 +461,15 @@ function vFriends() {
     if (!st.friends.length) body = `<div class="empty">Ajoute ta conjointe ou tes amis avec leur code ami pour voir leurs séances ici.</div>`;
     else if (feed === undefined) body = loader;
     else if (!feed || !feed.length) body = `<div class="empty">Tes amis n’ont pas encore enregistré de séance.</div>`;
-    else body = feed.slice(0, 40).map(w => workoutCard(w, (st.friends.find(f => f.uid === w.owner) || {}).name || 'Ami')).join('');
+    else body = feed.slice(0, 40).map(w => workoutCard(w, (st.friends.find(f => f.uid === w.owner) || {}).name || 'Ami', (profs[w.owner] || {}).avatar)).join('');
   } else if (tab === 'groups') {
     body = groupsList();
   } else {
-    body = st.friends.length ? `<div class="menu-links">${st.friends.map(f => `<a class="list-item" href="#/friend/${f.uid}">
-        <div class="avatar sm">${esc((f.name || '?')[0].toUpperCase())}</div><span class="grow"><b>${esc(f.name)}</b></span><span class="muted">›</span></a>`).join('')}</div>`
+    body = st.friends.length ? `<div class="menu-links">${st.friends.map(f => {
+        const pr = profs[f.uid] || {};
+        return `<a class="list-item" href="#/friend/${f.uid}">${avatarHtml(f.name, pr.avatar, 'sm')}
+          <span class="grow"><b>${esc(pr.name || f.name)}</b>${pr.bio ? `<span class="muted small ellipsis block">${esc(pr.bio)}</span>` : ''}</span><span class="muted">›</span></a>`;
+      }).join('')}</div>`
       : `<div class="empty">Aucun ami pour l’instant.</div>`;
   }
   return {
@@ -481,6 +486,20 @@ function vFriends() {
       ${chips([['feed', 'Fil d’actualité'], ['groups', `Groupes${unreadCount() ? ' 🔴' : ''}`], ['list', `Mes amis (${st.friends.length})`]], tab, 'friends-tab')}
       ${body}`,
   };
+}
+
+// Profils (photo, bio, pseudo à jour) de tous mes amis, gardés 2 minutes
+function friendProfiles() {
+  const cl = C();
+  const key = 'fprofiles:' + cl.state.friends.map(f => f.uid).join(',');
+  const data = fetchOnce(key, async () => {
+    const out = {};
+    await Promise.all(cl.state.friends.map(async f => { try { out[f.uid] = await cl.friendProfile(f.uid); } catch (e) { /* ignore */ } }));
+    return out;
+  }, 120000);
+  // Un profil n'a pas pu être lu : on réessaiera au prochain affichage plutôt que d'attendre 2 minutes
+  if (data && cl.state.friends.some(f => !data[f.uid]) && Date.now() - net[key].at > 5000) delete net[key];
+  return data || {};
 }
 
 function vFriend(fid) {
@@ -505,23 +524,21 @@ function vFriend(fid) {
       const s = cur - i * 7 * DAY, d = new Date(s);
       weeks.push({ label: `${d.getDate()}/${d.getMonth() + 1}`, v: ws.filter(w => w.start >= s && w.start < s + 7 * DAY).length });
     }
-    const since = Date.now() - 30 * DAY, mus = {};
-    for (const w of ws) if (w.start >= since) for (const e of w.exercises) mus[exMuscle(e)] = (mus[exMuscle(e)] || 0) + e.sets.filter(s => s.t !== 'w').length;
-    const musList = Object.entries(mus).sort((a, b) => b[1] - a[1]);
-    const musMax = Math.max(1, ...musList.map(m => m[1]));
     const prs = ws.reduce((a, w) => a + (w.prs || []).length, 0);
-    html = `<div class="card"><div class="stats3">${stat('Séances', ws.length)}${stat('Temps total', fmtDur(totDur))}${stat('Records 🏆', prs)}</div>
-        <div class="muted small">Volume total : ${fmtW(totVol)}${ws.length >= 100 ? ' (100 dernières séances)' : ''}</div></div>
+    const st = streakInfo(ws);
+    html = `<div class="card"><div class="stats3">${stat('Séances', ws.length)}${stat('Série 🔥', streakLabel(st.cur))}${stat('Records 🏆', prs)}</div>
+        <div class="muted small">Temps total : ${fmtDur(totDur)} · volume total : ${fmtW(totVol)}${ws.length >= 100 ? ' (100 dernières séances)' : ''}</div></div>
       <div class="card"><div class="card-title">Séances par semaine</div>${barChart(weeks, v => v)}</div>
-      ${musList.length ? `<div class="card"><div class="card-title">Muscles travaillés (30 jours)</div>${musList.map(([m, n]) => `<div class="mbar"><span>${esc(m)}</span><div class="mbar-track"><div class="mbar-fill" style="width:${n / musMax * 100}%"></div></div><b>${n}</b></div>`).join('')}</div>` : ''}
+      ${muscleCard(ws, 'Muscles travaillés')}
       <h2 class="section">Ses séances</h2>
       ${ws.length ? ws.slice(0, 30).map(w => workoutCard(w)).join('') : `<div class="empty">Pas encore de séance.</div>`}`;
   }
   return {
     title: esc(f.name), back: '#/friends',
     actions: `<button class="icon" data-a="friend-menu" data-uid="${fid}" aria-label="Options">⋯</button>`,
-    html: `<div class="profile-head"><div class="avatar">${esc((f.name || '?')[0].toUpperCase())}</div>
-      <div><h2>${esc(f.name)}</h2><div class="muted">Ami depuis ${f.since ? fmtDate(f.since) : '…'}</div></div></div>${html}`,
+    html: `<div class="profile-head">${avatarHtml(f.name, (friendProfiles()[fid] || {}).avatar)}
+      <div><h2>${esc((friendProfiles()[fid] || {}).name || f.name)}</h2><div class="muted">Ami depuis ${f.since ? fmtDate(f.since) : '…'}</div></div></div>
+      ${(friendProfiles()[fid] || {}).bio ? `<p class="bio">${esc(friendProfiles()[fid].bio)}</p>` : ''}${html}`,
   };
 }
 
@@ -724,7 +741,7 @@ function accountForm(mode) {
 
 /* Synchronisation : au moment de la connexion, on fusionne le téléphone et le compte en ligne */
 const packFor = w => C().packWorkout(w, ex, workoutTotals(w));
-const privateData = () => ({ routines: db.routines, custom: db.custom, measures: db.measures, settings: { height: db.settings.height ?? null, age: db.settings.age ?? null, ageYear: db.settings.ageYear ?? null, unit: db.settings.unit } });
+const privateData = () => ({ routines: db.routines, custom: db.custom, measures: db.measures, goals: db.goals || [], badgesSeen: db.badgesSeen || [], settings: { height: db.settings.height ?? null, age: db.settings.age ?? null, ageYear: db.settings.ageYear ?? null, unit: db.settings.unit } });
 let lastPrivate = '', privTimer = null;
 function schedulePrivatePush() {
   const cl = C();
@@ -760,13 +777,25 @@ async function syncOnLogin() {
       const merge = (a, b) => { const ids = new Set(a.map(x => x.id)); return [...a, ...(b || []).filter(x => !ids.has(x.id))]; };
       db.routines = merge(db.routines, priv.routines);
       db.custom = merge(db.custom, priv.custom);
+      db.goals = merge(db.goals || [], priv.goals);
+      db.badgesSeen = [...new Set([...(db.badgesSeen || []), ...(priv.badgesSeen || [])])];
       db.measures = merge(db.measures, priv.measures);
       if (priv.settings) for (const k of ['height', 'age', 'ageYear']) if (db.settings[k] == null && priv.settings[k] != null) db.settings[k] = priv.settings[k];
       rebuildEx();
     }
     const toPush = db.workouts.filter(w => !remote.has(w.id)).map(packFor);
     if (toPush.length) await cl.pushMany(toPush);
-    if (!db.settings.name && cl.state.profile) db.settings.name = cl.state.profile.name;
+    const prof = cl.state.profile;
+    if (prof) {
+      if (!db.settings.name) db.settings.name = prof.name;
+      // Photo et bio : on récupère celles du compte, ou on envoie celles du téléphone
+      if (!db.settings.avatar && prof.avatar) db.settings.avatar = prof.avatar;
+      if (!db.settings.bio && prof.bio) db.settings.bio = prof.bio;
+      const upd = {};
+      if (db.settings.avatar && !prof.avatar) upd.avatar = db.settings.avatar;
+      if (db.settings.bio && !prof.bio) upd.bio = db.settings.bio;
+      if (Object.keys(upd).length) cl.updateProfile(upd).catch(() => {});
+    }
     save();
     lastPrivate = '';
     schedulePrivatePush();
@@ -942,21 +971,16 @@ function vProfile() {
   const totVol = ws.reduce((a, w) => a + workoutTotals(w).vol, 0);
   const weeks = weekBuckets(12);
   const opt = { n: ['Séances', w => w.n, v => v], dur: ['Durée', w => Math.round(w.dur / 60000), v => v + ' min'], vol: ['Volume', w => w.vol, fmtW] }[ui.profChart];
-  // Répartition musculaire sur 30 jours
-  const since = Date.now() - 30 * DAY, mus = {};
-  for (const w of ws) if (w.start >= since) for (const e of w.exercises) {
-    const m = ex(e.ex).muscle;
-    mus[m] = (mus[m] || 0) + e.sets.filter(s => s.t !== 'w').length;
-  }
-  const musList = Object.entries(mus).sort((a, b) => b[1] - a[1]);
-  const musMax = Math.max(1, ...musList.map(m => m[1]));
   const name = db.settings.name || 'Mon profil';
   const bmi = bmiInfo();
   return {
     title: 'Profil',
     actions: `<a class="icon" href="#/settings" aria-label="Réglages">⚙️</a>`,
-    html: `<div class="profile-head"><div class="avatar">${esc((db.settings.name || 'B')[0].toUpperCase())}</div>
-      <div><h2>${esc(name)}</h2><div class="muted">${ws.length} séance${ws.length > 1 ? 's' : ''} au total</div></div></div>
+    html: `<div class="profile-head">${avatarHtml(db.settings.name || 'B', db.settings.avatar)}
+      <div class="grow"><h2>${esc(name)}</h2><div class="muted">${ws.length} séance${ws.length > 1 ? 's' : ''} au total</div></div>
+      <button class="btn ghost small" data-a="profile-edit">✏️ Modifier</button></div>
+      ${db.settings.bio ? `<p class="bio">${esc(db.settings.bio)}</p>` : `<button class="link bio-add" data-a="profile-edit">＋ Ajouter une bio et une photo</button>`}
+      ${profileMotivation()}
       <a class="card body-card" href="#/measures">
         <div class="stats4">${stat('Poids', lastWeight() ? fmtW(lastWeight()) : '–')}${stat('Taille', db.settings.height ? db.settings.height + ' cm' : '–')}${stat('Âge', currentAge() ? currentAge() + ' ans' : '–')}${stat('IMC', bmi ? fmtN(bmi.v) : '–')}</div>
         ${bmi ? `<div class="muted small">IMC : ${bmi.label}</div>` : ''}
@@ -965,10 +989,7 @@ function vProfile() {
       <div class="card"><div class="card-title">12 dernières semaines</div>
         ${chips([['n', 'Séances'], ['dur', 'Durée'], ['vol', 'Volume']], ui.profChart, 'prof-chart')}
         ${barChart(weeks.map(w => ({ label: w.label, v: opt[1](w) })), opt[2])}</div>
-      <div class="card"><div class="card-title">Muscles travaillés (30 derniers jours)</div>
-        ${musList.length ? musList.map(([m, n]) => `<div class="mbar"><span>${esc(m)}</span><div class="mbar-track"><div class="mbar-fill" style="width:${n / musMax * 100}%"></div></div><b>${n}</b></div>`).join('')
-          : '<div class="empty small">Pas encore de séance ces 30 derniers jours.</div>'}
-        <div class="muted small">Nombre de séries par muscle (hors échauffement).</div></div>
+      ${muscleCard(db.workouts)}
       <div class="card">${calendar()}</div>
       <div class="menu-links">
         <a class="list-item" href="#/measures">📏 <span class="grow">Mesures du corps</span><span class="muted">›</span></a>
@@ -1158,7 +1179,7 @@ function bmiInfo() {
 }
 
 /* ---------- Rendu principal ---------- */
-const TAB_OF = { home: 'home', workout: 'home', train: 'train', routine: 'train', active: 'train', exercises: 'exercises', exercise: 'exercises', profile: 'profile', measures: 'profile', settings: 'profile', friends: 'friends', friend: 'friends', fworkout: 'friends', group: 'friends', groupinfo: 'friends' };
+const TAB_OF = { home: 'home', workout: 'home', train: 'train', routine: 'train', active: 'train', exercises: 'exercises', exercise: 'exercises', profile: 'profile', measures: 'profile', settings: 'profile', friends: 'friends', friend: 'friends', fworkout: 'friends', group: 'friends', groupinfo: 'friends', goals: 'profile', badges: 'profile', recap: 'profile' };
 function render() {
   if (!db.settings.onboarded) { renderOnboarding(); return; }
   const hash = location.hash || '#/home';
@@ -1180,6 +1201,9 @@ function render() {
     case 'friends': v = vFriends(); break;
     case 'friend': v = vFriend(route[1]); break;
     case 'fworkout': v = vFriendWorkout(route[1], route[2]); break;
+    case 'goals': v = vGoals(); break;
+    case 'badges': v = vBadges(); break;
+    case 'recap': v = vRecap(route[1]); break;
     case 'group': v = vGroup(route[1]); break;
     case 'groupinfo': v = vGroupInfo(route[1]); break;
     default: v = vNotFound();
@@ -1400,23 +1424,28 @@ function finishSave() {
   w.prs = computePRs(w);
   if (editing) db.workouts = db.workouts.map(x => x.id === w.id ? w : x);
   else db.workouts.push(w);
+  // Objectifs atteints et badges débloqués grâce à cette séance
+  const goalsDone = checkGoals(), badgesNew = newBadges();
   cloudPushWorkout(w);
   delete net[`fw/${C()?.state.user?.uid}/${w.id}`];
   db.active = null;
   save();
   releaseWake();
   closeModal();
-  if (!editing) afterNav = () => celebrate(w);
+  if (!editing) afterNav = () => celebrate(w, goalsDone, badgesNew);
   location.hash = '#/workout/' + w.id;
 }
 let afterNav = null;
-function celebrate(w) {
+function celebrate(w, goals = [], badges = []) {
   const n = db.workouts.length, t = workoutTotals(w);
   openSheet(`<div class="celebrate"><div class="big-emoji">💪</div><h2>Bravo !</h2>
     <p class="muted">C’est ta ${n === 1 ? '1re' : n + 'e'} séance avec BobyMusc.</p>
     <div class="stats3">${stat('Durée', fmtDur(w.end - w.start))}${stat('Volume', fmtW(t.vol))}${stat('Séries', t.sets)}</div>
     ${w.prs.length ? `<h3>🏆 ${w.prs.length} nouveau${w.prs.length > 1 ? 'x' : ''} record${w.prs.length > 1 ? 's' : ''} !</h3>
       <div class="pr-list">${w.prs.map(p => `<span class="badge">${esc(ex(p.ex).name)} · ${esc(p.label)} : ${esc(PR_KEYS[ex(p.ex).type].find(k => k[0] === p.k)[2](p.v))}</span>`).join('')}</div>` : ''}
+    ${goals.length ? `<h3>🎯 Objectif${goals.length > 1 ? 's' : ''} atteint${goals.length > 1 ? 's' : ''} !</h3><div class="pr-list">${goals.map(g => `<span class="badge">${esc(goalTitle(g))}</span>`).join('')}</div>` : ''}
+    ${badges.length ? `<h3>🏅 Nouveau${badges.length > 1 ? 'x' : ''} badge${badges.length > 1 ? 's' : ''} !</h3><div class="new-badges">${badges.map(b => `<div><span>${b.icon}</span><b>${esc(b.name)}</b></div>`).join('')}</div>` : ''}
+    <div class="muted small">🔥 Série : ${streakLabel(streakInfo().cur)}</div>
     <button class="btn primary block" data-a="close-modal">Super !</button></div>`);
 }
 function discardActive() {
@@ -1905,7 +1934,10 @@ const A = {
     }
     if (!any) { toast('Remplis au moins une mesure'); return; }
     db.measures.push(m);
+    const done = checkGoals();
+    newBadges();
     save(); closeModal(); render();
+    if (done.length) toast(`🎯 Objectif atteint : ${goalTitle(done[0])} !`);
   },
   'measure-del': d => confirmBox('Supprimer cette mesure ?', 'Supprimer', () => { db.measures = db.measures.filter(m => m.id !== d.id); save(); render(); }),
   'accent': d => { db.settings.accent = d.v; save(); applyTheme(); render(); },
@@ -1927,6 +1959,8 @@ function shareWorkout(w) {
   else navigator.clipboard.writeText(text).then(() => toast('Séance copiée ✔'), () => toast('Partage impossible'));
 }
 
+Object.assign(A, MOTIV_ACTIONS);
+
 /* ---------- Écouteurs ---------- */
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-a]');
@@ -1939,6 +1973,7 @@ document.addEventListener('click', e => {
 document.addEventListener('input', e => {
   const t = e.target, d = t.dataset;
   if (t.id === 'msg-in') { ui.chatDraft = t.value; autoGrow(t); return; }
+  if (t.id === 'pf-bio') { $('#pf-count').textContent = `${t.value.length}/150`; return; }
   if (d.ob) {
     ob[d.ob] = d.ob === 'weight' ? fromDisp(t.value) : num(t.value);
   } else if (d.in) {
@@ -1963,6 +1998,17 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const t = e.target, k = t.dataset.setting;
   if (t.id === 'import-file' && t.files[0]) { importData(t.files[0]); t.value = ''; return; }
+  if (t.id === 'gl-type') { keepDraft(); goalForm(); return; }
+  if (t.id === 'avatar-in' && t.files[0]) {
+    const file = t.files[0];
+    t.value = '';
+    squareAvatar(file).then(img => {
+      ui.avatarDraft = img;
+      refreshAvatarPreview();
+      if (!$('[data-a="avatar-rm"]')) $('.avatar-edit > div').insertAdjacentHTML('beforeend', `<button class="btn danger-ghost small" data-a="avatar-rm">Retirer</button>`);
+    }).catch(() => toast('Impossible d’ouvrir cette photo'));
+    return;
+  }
   if (t.id === 'photo-in' && t.files[0]) {
     const file = t.files[0], gid = route[1];
     t.value = '';
@@ -2023,6 +2069,9 @@ function loadCloud() {
 /* ---------- Démarrage ---------- */
 load();
 rebuildEx();
+// Badges déjà mérités avant cette version : comptés comme « vus » (pas de pluie de badges)
+if (!db.badgesSeen && db.settings.onboarded) { db.badgesSeen = badgesState().filter(b => b.ok).map(b => b.id); save(); }
+if (!db.badgesSeen) db.badgesSeen = [];
 applyTheme();
 render();
 setInterval(tick, 500);

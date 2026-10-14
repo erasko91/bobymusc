@@ -1,7 +1,7 @@
 /* BobyMusc — permet à l'appli de marcher sans internet.
    Changer CACHE à chaque nouvelle version pour que les téléphones la récupèrent. */
-const CACHE = 'bobymusc-1.4.0';
-const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'exercises.js', 'cloud.js', 'manifest.webmanifest',
+const CACHE = 'bobymusc-1.5.0';
+const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'exercises.js', 'motivation.js', 'cloud.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 const SDK = 'https://www.gstatic.com/firebasejs/';
 
