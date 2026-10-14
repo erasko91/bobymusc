@@ -49,7 +49,7 @@ const EXERCISES = [
   ['shrug_halteres', 'Shrug (haltères)', 'Trapèzes', 'Haltères'],
   // Épaules
   ['dm_barre', 'Développé militaire (barre)', 'Épaules', 'Barre'],
-  ['dm_halteres', 'Développé épaules (haltères)', 'Épaules', 'Haltères'],
+  ['dm_halteres', 'Développé militaire (haltères)', 'Épaules', 'Haltères'],
   ['dm_machine', 'Développé épaules (machine)', 'Épaules', 'Machine'],
   ['arnold', 'Développé Arnold', 'Épaules', 'Haltères'],
   ['elev_lat', 'Élévations latérales (haltères)', 'Épaules', 'Haltères'],
@@ -278,6 +278,39 @@ const TEMPLATES = [
     ['pompes', 4, 15], ['squat_pdc', 4, 20], ['fentes_pdc', 3, 12],
     ['dips_banc', 3, 12], ['pont_fessier', 3, 15], ['planche', 3, 45], ['burpees', 3, 10]] },
 ];
+
+/* Autres noms utilisés en salle (français, anglais, abréviations) : servent seulement à la recherche. */
+const EX_ALIAS = {
+  dc_barre: 'dc bench press', dc_halteres: 'dc dumbbell bench press', dc_large: 'dc bench', dc_machine: 'dc chest press',
+  dc_smith: 'dc bench', dc_halteres_neutre: 'dc', dc_serre: 'dc serre close grip', di_barre: 'di incline bench press',
+  di_halteres: 'di incline dumbbell press', di_machine: 'di incline chest press', di_smith: 'di incline',
+  dd_barre: 'decline bench', dd_halteres: 'decline',
+  dm_barre: 'overhead press ohp military press developpe epaules', dm_halteres: 'shoulder press developpe epaules',
+  dm_assis_barre: 'military press', dm_machine: 'shoulder press developpe militaire', dm_smith: 'shoulder press militaire',
+  dm_poulie: 'shoulder press', dm_kb: 'militaire', arnold: 'arnold press',
+  elev_lat: 'lateral raise', elev_lat_poulie: 'lateral raise', elev_lat_machine: 'lateral raise',
+  elev_front: 'front raise', oiseau: 'rear delt fly', oiseau_poulie: 'rear delt fly', reverse_pec_deck: 'rear delt reverse fly',
+  pec_deck: 'butterfly fly', vis_a_vis: 'cable crossover croise fly', ecarte_halteres: 'fly', ecarte_incline: 'fly',
+  ecarte_poulie_basse: 'fly crossover', ecarte_incline_poulie: 'fly',
+  tirage_vertical: 'lat pulldown tirage poitrine tirage nuque', tirage_vertical_serre: 'lat pulldown',
+  tirage_supination: 'lat pulldown', tirage_triangle: 'lat pulldown', tirage_horizontal: 'seated row rowing assis',
+  tirage_un_bras: 'seated row', rowing_barre: 'barbell row', rowing_haltere: 'dumbbell row', rowing_halteres: 'dumbbell row',
+  rowing_t: 't bar row', tractions: 'pull up', chin_up: 'chin up', tractions_lestees: 'pull up',
+  souleve_terre: 'deadlift sdt', sdt_roumain: 'rdl romanian deadlift', sdt_sumo: 'sumo deadlift sdt',
+  sdt_trap_bar: 'deadlift sdt hex bar', sdt_jambes_tendues: 'stiff leg deadlift', sdt_jambes_tendues_barre: 'stiff leg deadlift',
+  rack_pull: 'deadlift', squat_barre: 'back squat', squat_avant: 'front squat', squat_bulgare: 'bulgarian split squat fente bulgare',
+  presse: 'leg press presse a cuisse', presse_pieds_serres: 'leg press', hack_squat: 'hack',
+  leg_ext: 'extension quadriceps', leg_curl_allonge: 'ischio', leg_curl_assis: 'ischio', leg_curl_debout: 'ischio',
+  fentes_halteres: 'lunge', fentes_marchees: 'walking lunge', fentes_pdc: 'lunge', fentes_barre: 'lunge', fentes_arriere: 'reverse lunge',
+  hip_thrust: 'pont fessier barre glute', pont_fessier: 'glute bridge', mollets_debout: 'calf raise', mollets_assis: 'calf raise',
+  mollets_presse: 'calf raise', mollets_halteres: 'calf raise', mollets_smith: 'calf raise', mollets_ane: 'calf raise',
+  barre_front: 'skull crusher extension triceps couche', ext_corde: 'pushdown triceps corde', ext_poulie: 'pushdown',
+  ext_poulie_v: 'pushdown', ext_poulie_inverse: 'pushdown', kickback: 'extension triceps', curl_marteau: 'hammer curl',
+  curl_marteau_corde: 'hammer curl', curl_pupitre: 'preacher curl larry scott', curl_concentre: 'concentration curl',
+  dips_pecs: 'dips', dips_triceps: 'dips', planche: 'plank gainage', planche_laterale: 'side plank',
+  releve_jambes: 'leg raise', shrug_barre: 'haussement epaules trapeze', shrug_halteres: 'haussement epaules trapeze',
+  face_pull: 'tirage visage', swing_kb: 'swing', abducteurs: 'abduction', adducteurs: 'adduction',
+};
 
 /* Consignes en français : étapes du mouvement, puis l'erreur à éviter (⚠️) ou un conseil (💡). */
 const EX_TIPS = {

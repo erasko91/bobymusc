@@ -1,4 +1,4 @@
-# BobyMusc : lance tous les tests sur une copie locale, nettoie les comptes de test et vérifie les vrais comptes.
+﻿# BobyMusc : lance tous les tests sur une copie locale, nettoie les comptes de test et vérifie les vrais comptes.
 # Usage : powershell -File E:\urbex\BobMusc\outils\lancer_tests.ps1
 # Les tests utilisent la VRAIE base Firebase avec des comptes test-...@example.com (supprimés à la fin).
 $ErrorActionPreference = 'Continue'
@@ -15,6 +15,7 @@ try {
     @('test_tpl.py', $shots),
     @('test_timer.py', $shots),
     @('test_photos.py', $shots),
+    @('test_search.py'),
     @('test_friends.py', $shots, (Join-Path $shots 'uids1.json')),
     @('test_settings.py', $shots, (Join-Path $shots 'uids2.json')),
     @('test_groups.py', $shots, $photo),

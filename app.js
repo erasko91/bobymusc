@@ -1,7 +1,7 @@
 ﻿'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.9.0';
+const VERSION = '1.9.1';
 window.BOBY_VERSION = VERSION;
 // Ancienne page restée en mémoire avec le nouveau code (fichiers manquants) : on recharge une page neuve
 if ((typeof MOTIV_ACTIONS === 'undefined' || typeof TIMER_ACTIONS === 'undefined') && !/[?&]fresh=/.test(location.search)) {
@@ -942,8 +942,15 @@ function vExercises() {
   };
 }
 function filterEx(q, m) {
-  const nq = norm(q || '');
-  return allEx().filter(e => (!m || e.muscle === m) && (!nq || norm(e.name).includes(nq) || norm(e.equip).includes(nq)));
+  // Tous les mots tapés doivent se retrouver dans le nom, le matériel, le muscle ou les autres noms de l'exercice
+  const words = norm(q || '').split(/[\s()'’-]+/).filter(Boolean).map(w => w.replace(/s$/, ''));
+  const alias = typeof EX_ALIAS !== 'undefined' ? EX_ALIAS : {};
+  return allEx().filter(e => {
+    if (m && e.muscle !== m) return false;
+    if (!words.length) return true;
+    const hay = norm(`${e.name} ${e.equip} ${e.muscle} ${alias[e.id] || ''}`);
+    return words.every(w => hay.includes(w));
+  });
 }
 function exList(q, m, mode) {
   const list = filterEx(q, m);
