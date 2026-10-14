@@ -123,6 +123,33 @@ const Cloud = {
   async rename(name) {
     await updateDoc(uref(state.user.uid), { name });
   },
+  // Mode privé : les amis ne peuvent plus lire mes séances (vérifié par les règles de sécurité)
+  setPrivate: priv => updateDoc(uref(state.user.uid), { private: !!priv }),
+  // Efface tout ce qui m'appartient en ligne, puis le compte lui-même
+  async deleteAccount() {
+    const me = state.user.uid, user = auth.currentUser;
+    const del = async refs => {
+      for (let i = 0; i < refs.length; i += 400) {
+        const b = writeBatch(fs);
+        refs.slice(i, i + 400).forEach(r => b.delete(r));
+        await b.commit();
+      }
+    };
+    const [ws, fr, rq] = await Promise.all([
+      getDocs(collection(fs, 'users', me, 'workouts')),
+      getDocs(collection(fs, 'users', me, 'friends')),
+      getDocs(collection(fs, 'users', me, 'requests')),
+    ]);
+    unsubs.forEach(u => u()); unsubs = [];
+    await del([
+      ...ws.docs.map(d => d.ref), ...rq.docs.map(d => d.ref),
+      ...fr.docs.flatMap(d => [d.ref, doc(fs, 'users', d.id, 'friends', me)]),
+      doc(fs, 'users', me, 'private', 'data'),
+    ]);
+    if (state.profile && state.profile.code) await deleteDoc(doc(fs, 'codes', state.profile.code));
+    await deleteDoc(uref(me));
+    await user.delete();
+  },
 
   async pushWorkout(w, exInfo, totals) {
     if (!state.user) return;

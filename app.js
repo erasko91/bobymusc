@@ -1,7 +1,7 @@
 'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.2.1';
+const VERSION = '1.3.0';
 const APP_URL = 'https://bobymusc-app.web.app/';
 const KEY = 'bobmusc-data-v1';
 const LB = 2.20462;
@@ -34,7 +34,11 @@ const num = v => {
 /* ---------- Données ---------- */
 const defaults = () => ({
   v: 1,
-  settings: { name: '', unit: 'kg', theme: 'dark', accent: 'orange', rest: 90, sound: true, vibrate: true, wakelock: true },
+  settings: {
+    name: '', unit: 'kg', dist: 'km', theme: 'dark', accent: 'orange', textSize: 100, weekStart: 'mon',
+    rest: 90, autoRest: true, sound: 'bip', warn10: true, vibrate: true, wakelock: true,
+    defSets: 3, prefill: false,
+  },
   custom: [], routines: [], workouts: [], measures: [], active: null,
 });
 let db;
@@ -44,6 +48,9 @@ function load() {
   const def = defaults();
   db = { ...def, ...(d || {}) };
   db.settings = { ...def.settings, ...((d && d.settings) || {}) };
+  // Ancienne version : le son était un simple oui/non
+  if (db.settings.sound === true) db.settings.sound = 'bip';
+  if (db.settings.sound === false) db.settings.sound = 'none';
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(db)); }
@@ -56,6 +63,12 @@ const U = () => db.settings.unit;
 const toDisp = kg => (kg === '' || kg == null) ? '' : Math.round((U() === 'lb' ? kg * LB : kg) * 100) / 100;
 const fromDisp = v => { const n = num(v); return n === '' ? '' : (U() === 'lb' ? n / LB : n); };
 const fmtW = kg => fmtN(toDisp(kg || 0)) + ' ' + U();
+// Distances : stockées en km, affichées en km ou en miles
+const MI = 0.621371;
+const UD = () => db.settings.dist === 'mi' ? 'mi' : 'km';
+const toDispD = km => (km === '' || km == null) ? '' : Math.round((UD() === 'mi' ? km * MI : km) * 100) / 100;
+const fromDispD = v => { const n = num(v); return n === '' ? '' : (UD() === 'mi' ? n / MI : n); };
+const fmtD = km => fmtN(toDispD(km || 0)) + ' ' + UD();
 const pad2 = n => String(n).padStart(2, '0');
 function fmtClock(ms) {
   const t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
@@ -84,9 +97,11 @@ function fmtDate(t) {
 const isoDay = t => { const d = new Date(t); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
 function weekStart(t) {
   const d = new Date(t); d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  d.setDate(d.getDate() - dayShift(d));
   return d.getTime();
 }
+// Nombre de jours depuis le début de semaine (lundi ou dimanche selon le réglage)
+const dayShift = d => db.settings.weekStart === 'sun' ? d.getDay() : (d.getDay() + 6) % 7;
 
 /* ---------- Exercices ---------- */
 let EXMAP = {};
@@ -98,7 +113,10 @@ function rebuildEx() {
 const ex = id => EXMAP[id] || { id, name: 'Exercice supprimé', muscle: 'Corps entier', equip: 'Autre', type: 'wr' };
 const allEx = () => [...EXERCISES, ...db.custom].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 const FIELDS = { wr: ['w', 'r'], bw: ['r'], time: ['s'], cardio: ['d', 'm'] };
-const fieldLabel = f => ({ w: U().toUpperCase(), r: 'REPS', s: 'SEC', d: 'KM', m: 'MIN' }[f]);
+const fieldLabel = f => ({ w: U().toUpperCase(), r: 'REPS', s: 'SEC', d: UD().toUpperCase(), m: 'MIN' }[f]);
+// Valeur affichée dans une case de saisie / valeur enregistrée depuis la case
+const inDisp = (f, v) => f === 'w' ? toDisp(v) : f === 'd' ? toDispD(v) : (v ?? '');
+const inStore = (f, v) => f === 'w' ? fromDisp(v) : f === 'd' ? fromDispD(v) : num(v);
 function setValid(s, type) {
   if (type === 'wr' || type === 'bw') return +s.r > 0;
   if (type === 'time') return +s.s > 0;
@@ -108,7 +126,7 @@ function fmtSet(s, type) {
   if (type === 'wr') return `${fmtW(s.w)} × ${fmtN(s.r)}`;
   if (type === 'bw') return `${fmtN(s.r)} reps`;
   if (type === 'time') return fmtSec(s.s);
-  return [s.d ? fmtN(s.d) + ' km' : '', s.m ? fmtN(s.m) + ' min' : ''].filter(Boolean).join(' · ');
+  return [s.d ? fmtD(s.d) : '', s.m ? fmtN(s.m) + ' min' : ''].filter(Boolean).join(' · ');
 }
 const e1rm = (w, r) => r > 0 && w > 0 ? (r === 1 ? w : w * (1 + r / 30)) : 0;
 
@@ -133,7 +151,7 @@ const PR_KEYS = {
   wr: [['maxW', 'Poids max', fmtW], ['best1', '1RM estimé', fmtW], ['bestSetVol', 'Meilleure série (volume)', fmtW]],
   bw: [['maxR', 'Répétitions max', v => fmtN(v) + ' reps']],
   time: [['maxS', 'Durée max', fmtSec]],
-  cardio: [['maxD', 'Distance max', v => fmtN(v) + ' km']],
+  cardio: [['maxD', 'Distance max', v => fmtD(v)]],
 };
 
 const sortedWorkouts = () => [...db.workouts].sort((a, b) => b.start - a.start);
@@ -190,6 +208,8 @@ function applyTheme() {
   document.documentElement.style.setProperty('--accent', ACCENTS[db.settings.accent] || ACCENTS.orange);
   const meta = $('meta[name="theme-color"]');
   if (meta) meta.content = dark ? '#0E0F12' : '#F4F5F7';
+  // Taille de l'affichage (plus gros = plus lisible à la salle)
+  document.body.style.zoom = (+db.settings.textSize || 100) / 100;
 }
 
 /* ---------- Fenêtres (feuilles du bas) ---------- */
@@ -467,7 +487,12 @@ function vFriend(fid) {
   const ws = fetchOnce('fws/' + fid, () => cl.friendWorkouts(fid, 100));
   let html;
   if (ws === undefined) html = loader;
-  else if (!ws) html = `<div class="empty">Impossible de charger ses séances.</div>`;
+  else if (!ws) {
+    const err = net['fws/' + fid] && net['fws/' + fid].err;
+    html = err && err.code === 'permission-denied'
+      ? `<div class="empty">🔒 ${esc(f.name)} a choisi de garder ses séances privées.</div>`
+      : `<div class="empty">Impossible de charger ses séances. Vérifie ta connexion internet.</div>`;
+  }
   else {
     const totVol = ws.reduce((a, w) => a + workoutTotals(w).vol, 0);
     const totDur = ws.reduce((a, w) => a + (w.end - w.start), 0);
@@ -655,8 +680,8 @@ function exEditor(ctx) {
       const code = s.t && s.t !== 'n' ? SET_CODES[s.t] : String(++n);
       const p = prev[si];
       const inputs = fields.map(f => {
-        const val = f === 'w' ? toDisp(s[f]) : (s[f] ?? '');
-        const ph = p && p[f] !== '' && p[f] != null ? (f === 'w' ? toDisp(p[f]) : p[f]) : '–';
+        const val = inDisp(f, s[f]);
+        const ph = p && p[f] !== '' && p[f] != null ? inDisp(f, p[f]) : '–';
         return `<td><input class="in" data-in="${f}" data-ctx="${ctx}" data-ei="${ei}" data-si="${si}" value="${esc(val)}" placeholder="${esc(ph)}" inputmode="${f === 'r' || f === 's' ? 'numeric' : 'decimal'}" autocomplete="off"></td>`;
       }).join('');
       return `<tr class="${s.done ? 'done' : ''}">
@@ -720,7 +745,7 @@ function vExercise(id) {
     : e0.type === 'time' ? [['maxS', 'Durée max']] : [['maxD', 'Distance'], ['totM', 'Durée']];
   if (!chartOpts.some(o => o[0] === ui.exChart)) ui.exChart = chartOpts[0][0];
   const val = st => ui.exChart === 'totR' ? st.sets.filter(x => x.t !== 'w').reduce((a, x) => a + (+x.r || 0), 0) : statsOf(st.sets)[ui.exChart];
-  const fmtC = ['best1', 'maxW', 'vol'].includes(ui.exChart) ? fmtW : ui.exChart === 'maxS' ? fmtSec : ui.exChart === 'maxD' ? v => fmtN(v) + ' km' : ui.exChart === 'totM' ? v => fmtN(v) + ' min' : fmtN;
+  const fmtC = ['best1', 'maxW', 'vol'].includes(ui.exChart) ? fmtW : ui.exChart === 'maxS' ? fmtSec : ui.exChart === 'maxD' ? fmtD : ui.exChart === 'totM' ? v => fmtN(v) + ' min' : fmtN;
   const pts = ss.map(s => ({ t: s.w.start, v: val(s) })).filter(p => p.v > 0);
   const hist = [...ss].reverse().slice(0, 30).map(s => `<a class="card hist" href="#/workout/${s.w.id}">
       <div class="row-between"><b>${esc(s.w.name)}</b><span class="muted small">${fmtDate(s.w.start)}</span></div>
@@ -789,7 +814,7 @@ function calendar() {
   const m = ui.calMonth || new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const d0 = new Date(m), y = d0.getFullYear(), mo = d0.getMonth();
   const days = new Date(y, mo + 1, 0).getDate();
-  const offset = (d0.getDay() + 6) % 7;
+  const offset = dayShift(d0);
   const on = new Set(db.workouts.map(w => isoDay(w.start)));
   const today = isoDay(Date.now());
   let cells = '';
@@ -804,7 +829,7 @@ function calendar() {
   return `<div class="row-between cal-head"><button class="icon" data-a="cal" data-d="-1" aria-label="Mois précédent">‹</button>
     <div class="card-title">${title.charAt(0).toUpperCase() + title.slice(1)} · ${count} jour${count > 1 ? 's' : ''}</div>
     <button class="icon" data-a="cal" data-d="1" aria-label="Mois suivant">›</button></div>
-    <div class="cal">${['L', 'M', 'M', 'J', 'V', 'S', 'D'].map(x => `<b>${x}</b>`).join('')}${cells}</div>`;
+    <div class="cal">${(db.settings.weekStart === 'sun' ? ['D', 'L', 'M', 'M', 'J', 'V', 'S'] : ['L', 'M', 'M', 'J', 'V', 'S', 'D']).map(x => `<b>${x}</b>`).join('')}${cells}</div>`;
 }
 
 function measureUnit(u) { return u === 'w' ? U() : u; }
@@ -828,41 +853,70 @@ function vMeasures() {
 function vSettings() {
   const s = db.settings;
   const sel = (k, opts) => `<select data-setting="${k}">${opts.map(([v, l]) => `<option value="${v}" ${String(s[k]) === String(v) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
-  const tog = (k, l) => `<label class="set-row"><span>${l}</span><input type="checkbox" data-setting="${k}" ${s[k] ? 'checked' : ''}></label>`;
+  // hint : petite explication sous le réglage
+  const tog = (k, l, hint = '') => `<label class="set-row"><span>${l}${hint ? `<small>${hint}</small>` : ''}</span><input type="checkbox" data-setting="${k}" ${s[k] ? 'checked' : ''}></label>`;
+  const cl = C(), st = cl && cl.state;
+  const logged = st && st.user;
   return {
     title: 'Réglages', back: '#/profile',
-    html: `<div class="card form">
+    html: `<h2 class="section first">👤 Profil</h2>
+      <div class="card form">
         <label class="set-row"><span>Ton prénom</span><input data-setting="name" value="${esc(s.name)}" placeholder="Prénom"></label>
         <label class="set-row"><span>Taille (cm)</span><input data-setting="height" inputmode="numeric" value="${esc(s.height ?? '')}" placeholder="175"></label>
         <label class="set-row"><span>Âge</span><input data-setting="age" inputmode="numeric" value="${esc(currentAge() ?? '')}" placeholder="25"></label>
-        <label class="set-row"><span>Unité de poids</span>${sel('unit', [['kg', 'Kilos (kg)'], ['lb', 'Livres (lb)']])}</label>
-        <label class="set-row"><span>Repos par défaut</span>${sel('rest', REST_CHOICES.map(r => [r, fmtRest(r)]))}</label>
-        ${tog('sound', 'Bip à la fin du repos')}
-        ${tog('vibrate', 'Vibration à la fin du repos (Android)')}
-        ${tog('wakelock', 'Garder l’écran allumé pendant la séance')}
       </div>
+
+      <h2 class="section">🏋️ Séance</h2>
+      <div class="card form">
+        <label class="set-row"><span>Unité de poids</span>${sel('unit', [['kg', 'Kilos (kg)'], ['lb', 'Livres (lb)']])}</label>
+        <label class="set-row"><span>Unité de distance</span>${sel('dist', [['km', 'Kilomètres'], ['mi', 'Miles']])}</label>
+        <label class="set-row"><span>Séries par défaut<small>pour un exercice jamais fait</small></span>${sel('defSets', [1, 2, 3, 4, 5, 6].map(n => [n, n + ' série' + (n > 1 ? 's' : '')]))}</label>
+        ${tog('prefill', 'Pré-remplir avec la dernière séance', 'les poids et reps de la dernière fois sont déjà écrits')}
+        ${tog('wakelock', 'Garder l’écran allumé', 'pendant une séance en cours')}
+      </div>
+
+      <h2 class="section">⏱ Minuteur de repos</h2>
+      <div class="card form">
+        <label class="set-row"><span>Repos par défaut</span>${sel('rest', REST_CHOICES.map(r => [r, fmtRest(r)]))}</label>
+        ${tog('autoRest', 'Lancer après chaque série', 'dès que tu valides une série avec ✓')}
+        <label class="set-row"><span>Son de fin</span>${sel('sound', SOUND_NAMES)}</label>
+        ${tog('warn10', 'Prévenir 10 s avant la fin', 'petit bip pour te préparer')}
+        ${tog('vibrate', 'Vibration', 'Android seulement')}
+        <button class="btn ghost block small test-sound" data-a="test-sound">🔊 Tester le son</button>
+      </div>
+
+      <h2 class="section">🎨 Affichage</h2>
       <div class="card form">
         <label class="set-row"><span>Thème</span>${sel('theme', [['dark', 'Sombre'], ['light', 'Clair'], ['auto', 'Comme le téléphone']])}</label>
         <div class="set-row"><span>Couleur</span><div class="swatches">${Object.entries(ACCENTS).map(([k, c]) => `<button class="swatch ${s.accent === k ? 'on' : ''}" style="background:${c}" data-a="accent" data-v="${k}" aria-label="${k}"></button>`).join('')}</div></div>
+        <label class="set-row"><span>Taille de l’affichage</span>${sel('textSize', [[90, 'Petite'], [100, 'Normale'], [110, 'Grande'], [120, 'Très grande']])}</label>
+        <label class="set-row"><span>La semaine commence le</span>${sel('weekStart', [['mon', 'Lundi'], ['sun', 'Dimanche']])}</label>
       </div>
-      <h2 class="section">Compte en ligne</h2>
-      <div class="card">${C() && C().state.user
-        ? `<p class="muted small">Connecté avec <b>${esc(C().state.user.email)}</b>${C().state.profile ? ` · pseudo <b>${esc(C().state.profile.name)}</b> · code <b>${esc(C().state.profile.code)}</b>` : ''}.<br>Tes séances sont sauvegardées en ligne automatiquement.</p>
-           <button class="btn ghost block" data-a="logout">Se déconnecter</button>`
+
+      <h2 class="section">🤝 Compte et amis</h2>
+      <div class="card ${logged ? 'form' : ''}">${logged
+        ? `<label class="set-row"><span>Pseudo<small>visible par tes amis</small></span><input id="set-pseudo" data-a2="pseudo" value="${esc(st.profile ? st.profile.name : '')}" maxlength="24"></label>
+           <label class="set-row"><span>Montrer mes séances à mes amis<small>si c’est désactivé, tes amis ne voient plus tes séances</small></span><input type="checkbox" data-cloud="share" ${st.profile && st.profile.private ? '' : 'checked'}></label>
+           <div class="set-row"><span>Connecté avec<small>${esc(st.user.email)}${st.profile ? ` · code ${esc(st.profile.code)}` : ''}</small></span></div>
+           <button class="btn ghost block" data-a="logout">Se déconnecter</button>
+           <button class="btn danger-ghost block" data-a="delete-account">Supprimer mon compte en ligne</button>`
         : `<p class="muted small">Crée un compte gratuit pour sauvegarder tes séances en ligne et voir la progression de tes amis.</p>
            <a class="btn primary block" href="#/friends">Créer un compte / Se connecter</a>`}</div>
-      <h2 class="section">Sauvegarde</h2>
+
+      <h2 class="section">💾 Sauvegarde</h2>
       <div class="card">
-        <p class="muted small">Tes données sont enregistrées uniquement sur ce téléphone. Fais une sauvegarde de temps en temps (par exemple dans tes fichiers ou Google Drive) pour ne rien perdre si tu changes de téléphone.</p>
+        <p class="muted small">${logged ? 'Tes séances sont aussi sauvegardées en ligne automatiquement. ' : 'Tes données sont enregistrées uniquement sur ce téléphone. '}Tu peux aussi garder une copie dans tes fichiers ou sur Google Drive.</p>
         <button class="btn primary block" data-a="export">⬇ Exporter une sauvegarde</button>
         <button class="btn ghost block" data-a="import">⬆ Importer une sauvegarde</button>
+        <button class="btn ghost block" data-a="export-csv">📊 Exporter pour Excel (CSV)</button>
         <input type="file" id="import-file" accept=".json,application/json" hidden>
       </div>
       <div class="card">
         <button class="btn ghost block" data-a="share-app">📤 Partager BobyMusc à un ami</button>
+        <button class="btn ghost block" data-a="redo-onboarding">↺ Refaire l’accueil (poids, taille, âge)</button>
         <button class="btn danger-ghost block" data-a="wipe">Effacer toutes mes données</button>
       </div>
-      <p class="muted small center">BobyMusc ${VERSION} · 100 % gratuit, sans pub, sans compte</p>`,
+      <p class="muted small center">BobyMusc ${VERSION} · 100 % gratuit, sans pub</p>`,
   };
 }
 
@@ -995,23 +1049,34 @@ function unlockAudio() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
   } catch (e) { /* pas de son disponible */ }
 }
-function beep(delay, freq) {
+function beep(delay, freq, dur = 0.35, type = 'sine', vol = 0.4) {
   if (!audioCtx) return;
   const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t = audioCtx.currentTime + delay;
-  o.frequency.value = freq; o.type = 'sine';
+  o.frequency.value = freq; o.type = type;
   o.connect(g); g.connect(audioCtx.destination);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-  o.start(t); o.stop(t + 0.4);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+const SOUNDS = {
+  bip: () => { beep(0, 880); beep(0.45, 880); beep(0.9, 1175); },
+  cloche: () => { beep(0, 1318, 1.6, 'sine', 0.35); beep(0, 659, 1.6, 'sine', 0.2); beep(0.8, 1318, 1.6, 'sine', 0.35); beep(0.8, 659, 1.6, 'sine', 0.2); },
+  sifflet: () => { beep(0, 2100, 0.25, 'triangle', 0.35); beep(0.32, 2100, 0.25, 'triangle', 0.35); beep(0.64, 2400, 0.6, 'triangle', 0.35); },
+  gong: () => { beep(0, 196, 2.2, 'sine', 0.5); beep(0, 392, 1.8, 'sine', 0.25); beep(0, 587, 1.2, 'sine', 0.12); },
+  none: () => {},
+};
+const SOUND_NAMES = [['bip', 'Bip bip'], ['cloche', 'Cloche'], ['sifflet', 'Sifflet'], ['gong', 'Gong'], ['none', 'Aucun son']];
+function playSound(kind) {
+  try { (SOUNDS[kind] || SOUNDS.bip)(); } catch (e) { /* ignore */ }
 }
 function restAlarm() {
-  if (db.settings.sound) { try { beep(0, 880); beep(0.45, 880); beep(0.9, 1175); } catch (e) { /* ignore */ } }
+  playSound(db.settings.sound);
   if (db.settings.vibrate && navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 500]);
   toast('⏱ Repos terminé, à toi de jouer !');
 }
 function startRest(sec) {
-  db.active.rest = { end: Date.now() + sec * 1000, total: sec };
+  db.active.rest = { end: Date.now() + sec * 1000, total: sec, warned: sec <= 15 };
   save();
   renderRestBar(true);
 }
@@ -1040,6 +1105,12 @@ function tick() {
   const ab = $('#ab-time');
   if (ab) ab.textContent = fmtClock(Date.now() - a.start);
   if (a.rest) {
+    // Petit bip d'avertissement 10 secondes avant la fin
+    if (db.settings.warn10 && !a.rest.warned && a.rest.end - Date.now() <= 10000) {
+      a.rest.warned = true;
+      if (db.settings.sound !== 'none') beep(0, 660, 0.15, 'sine', 0.25);
+      if (db.settings.vibrate && navigator.vibrate) navigator.vibrate(120);
+    }
     if (Date.now() >= a.rest.end) { a.rest = null; save(); restAlarm(); }
     renderRestBar(false);
   }
@@ -1074,6 +1145,7 @@ function startWorkout(name, exercises, routineId = null) {
     id: uid(), name: name || defaultName(), start: Date.now(), routineId, rest: null,
     exercises: (exercises || []).map(e => ({ ex: e.ex, rest: e.rest, note: '', sets: e.sets.map(s => blankSet(s)) })),
   };
+  db.active.exercises.forEach(prefillFromLast);
   save();
   unlockAudio();
   location.hash = '#/active';
@@ -1082,11 +1154,23 @@ function addExercises(ctx, ids) {
   const c = getCtx(ctx);
   for (const id of ids) {
     const prev = ctx === 'active' ? lastSets(id, Infinity, c.editingId) : [];
-    const n = prev.length || 3;
-    c.exercises.push({ ex: id, note: '', rest: undefined, sets: Array.from({ length: n }, (_, i) => blankSet({ t: prev[i] ? prev[i].t : 'n' })) });
+    const n = prev.length || +db.settings.defSets || 3;
+    const e = { ex: id, note: '', rest: undefined, sets: Array.from({ length: n }, (_, i) => blankSet({ t: prev[i] ? prev[i].t : 'n' })) };
+    if (ctx === 'active') prefillFromLast(e);
+    c.exercises.push(e);
   }
   if (ctx === 'draft') draft.dirty = true; else save();
   render();
+}
+// Réglage « Pré-remplir » : recopie les valeurs de la dernière fois dans les cases vides
+function prefillFromLast(e) {
+  if (!db.settings.prefill) return;
+  const prev = lastSets(e.ex, Infinity, db.active && db.active.editingId);
+  e.sets.forEach((s, i) => {
+    const p = prev[i];
+    if (!p) return;
+    for (const f of FIELDS[ex(e.ex).type]) if ((s[f] === '' || s[f] == null) && p[f] !== '' && p[f] != null) s[f] = p[f];
+  });
 }
 function toggleSet(ei, si) {
   const a = db.active, e = a.exercises[ei], s = e.sets[si], type = ex(e.ex).type;
@@ -1098,7 +1182,7 @@ function toggleSet(ei, si) {
     s.done = true;
     unlockAudio();
     const rest = e.rest ?? db.settings.rest;
-    if (rest > 0 && !a.editingId) startRest(rest);
+    if (rest > 0 && !a.editingId && db.settings.autoRest) startRest(rest);
   } else s.done = false;
   save();
   render();
@@ -1220,6 +1304,42 @@ async function exportData() {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   toast('Sauvegarde téléchargée');
 }
+// Une ligne par série, lisible dans Excel (séparateur « ; » et virgule décimale à la française)
+async function exportCsv() {
+  if (!db.workouts.length) { toast('Aucune séance à exporter'); return; }
+  const cell = v => {
+    const s = typeof v === 'number' ? String(Math.round(v * 100) / 100).replace('.', ',') : String(v ?? '');
+    return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const rows = [['Date', 'Heure', 'Séance', 'Exercice', 'Muscle', 'Série', 'Type de série', `Poids (${U()})`, 'Répétitions', 'Durée (s)', `Distance (${UD()})`, 'Durée (min)', 'Note']];
+  for (const w of sortedWorkouts().reverse()) {
+    const d = new Date(w.start);
+    for (const e of w.exercises) {
+      e.sets.forEach((s, i) => rows.push([
+        isoDay(w.start), timeFmt.format(d), w.name, exName(e), exMuscle(e), i + 1, SET_TYPES[s.t || 'n'],
+        s.w === '' || s.w == null ? '' : toDisp(s.w), s.r ?? '', s.s ?? '', s.d === '' || s.d == null ? '' : toDispD(s.d), s.m ?? '', i === 0 ? e.note || '' : '',
+      ]));
+    }
+  }
+  const csv = '﻿' + rows.map(r => r.map(cell).join(';')).join('\r\n');
+  const name = `bobymusc-seances-${isoDay(Date.now())}.csv`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  try {
+    const file = new File([blob], name, { type: 'text/csv' });
+    if (navigator.canShare && navigator.canShare({ files: [file] }) && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      await navigator.share({ files: [file], title: 'Mes séances BobyMusc' });
+      return;
+    }
+  } catch (e) { if (e.name === 'AbortError') return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('Fichier Excel téléchargé ✔');
+}
 function importData(file) {
   const rd = new FileReader();
   rd.onload = () => {
@@ -1254,6 +1374,29 @@ const A = {
       [30, 45, 60, 90, 120, 150, 180, 240, 300].map(s => ({ label: '⏱ ' + fmtSec(s), fn: () => { unlockAudio(); startRest(s); } }))
         .concat(r ? [{ label: '⏹ Arrêter le minuteur', danger: true, fn: () => { db.active.rest = null; save(); renderRestBar(); } }] : []));
   },
+  'test-sound': () => { unlockAudio(); playSound(db.settings.sound === 'none' ? 'bip' : db.settings.sound); },
+  'export-csv': () => exportCsv(),
+  'redo-onboarding': () => confirmBox('Refaire les pages Poids, Taille et Âge ? Tes séances ne sont pas touchées.', 'Refaire', () => {
+    const w = lastWeight();
+    if (w) ob.weight = w;
+    if (db.settings.height) ob.height = db.settings.height;
+    if (currentAge()) ob.age = currentAge();
+    ob.step = 0;
+    db.settings.onboarded = false;
+    save();
+    render();
+  }, false),
+  'delete-account': () => confirmBox('Supprimer ton compte en ligne ?<br><small>Tes séances en ligne, ton code ami et tes amitiés seront effacés. Les séances restent sur ce téléphone.</small>', 'Supprimer mon compte', async () => {
+    toast('Suppression en cours…');
+    try {
+      await C().deleteAccount();
+      for (const k in net) delete net[k];
+      toast('Compte supprimé');
+      render();
+    } catch (e) {
+      toast(e.code === 'auth/requires-recent-login' ? 'Par sécurité, déconnecte-toi, reconnecte-toi, puis réessaie.' : C().errMsg(e));
+    }
+  }),
   /* Compte et amis */
   'acc-signup': () => accountForm('signup'),
   'acc-login': () => accountForm('login'),
@@ -1536,7 +1679,7 @@ document.addEventListener('input', e => {
     ob[d.ob] = d.ob === 'weight' ? fromDisp(t.value) : num(t.value);
   } else if (d.in) {
     const c = getCtx(d.ctx), s = c.exercises[+d.ei].sets[+d.si];
-    s[d.in] = d.in === 'w' ? fromDisp(t.value) : num(t.value);
+    s[d.in] = inStore(d.in, t.value);
     if (d.ctx === 'draft') draft.dirty = true; else { save(); updateActiveStats(); }
   } else if (d.f) {
     const c = getCtx(d.ctx);
@@ -1556,15 +1699,27 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const t = e.target, k = t.dataset.setting;
   if (t.id === 'import-file' && t.files[0]) { importData(t.files[0]); t.value = ''; return; }
+  if (t.dataset.cloud === 'share') {
+    C().setPrivate(!t.checked).then(() => toast(t.checked ? 'Tes amis voient tes séances ✔' : '🔒 Tes séances sont maintenant privées'))
+      .catch(err => { toast(C().errMsg(err)); t.checked = !t.checked; });
+    return;
+  }
+  if (t.id === 'set-pseudo') {
+    const name = t.value.trim();
+    if (name.length < 2) { toast('Pseudo trop court'); return; }
+    C().rename(name).then(() => toast('Pseudo changé ✔'), err => toast(C().errMsg(err)));
+    return;
+  }
   if (!k || k === 'name') return;
   if (t.type === 'checkbox') db.settings[k] = t.checked;
   else if (k === 'height' || k === 'age') {
     const v = num(t.value);
     db.settings[k] = v === '' ? null : Math.round(v);
     if (k === 'age') db.settings.ageYear = new Date().getFullYear();
-  } else db.settings[k] = k === 'rest' ? +t.value : t.value;
+  } else db.settings[k] = ['rest', 'defSets', 'textSize'].includes(k) ? +t.value : t.value;
   save();
-  if (k === 'theme') applyTheme();
+  if (k === 'theme' || k === 'textSize') applyTheme();
+  if (k === 'sound') { unlockAudio(); playSound(t.value); }
   if (k === 'wakelock' && !t.checked) releaseWake();
 });
 // Sélectionner le contenu d'une case quand on la touche (plus rapide pour corriger)

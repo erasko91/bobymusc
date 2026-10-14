@@ -7,6 +7,8 @@ service cloud.firestore {
     // « uid » m'a dans sa liste d'amis
     function isFriend(uid) { return exists(/databases/$(database)/documents/users/$(uid)/friends/$(me())); }
     function hasRequest(owner, from) { return exists(/databases/$(database)/documents/users/$(owner)/requests/$(from)); }
+    // « uid » n'a pas mis ses séances en privé
+    function shares(uid) { return get(/databases/$(database)/documents/users/$(uid)).data.get('private', false) != true; }
 
     // Code ami -> identifiant
     match /codes/{code} {
@@ -20,10 +22,10 @@ service cloud.firestore {
       allow write: if signedIn() && uid == me();
 
       match /workouts/{wid} {
-        allow read: if signedIn() && (uid == me() || isFriend(uid));
+        allow read: if signedIn() && (uid == me() || (isFriend(uid) && shares(uid)));
         allow write: if signedIn() && uid == me();
         // Un ami peut seulement ajouter/retirer SA réaction
-        allow update: if signedIn() && isFriend(uid)
+        allow update: if signedIn() && isFriend(uid) && shares(uid)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
           && request.resource.data.get('reactions', {}).diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([me()]);
       }

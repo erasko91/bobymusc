@@ -261,6 +261,9 @@ tr.done .in { background: transparent; }
 }
 .set-row input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
 .set-row input[type="checkbox"]:checked::after { transform: translateX(20px); }
+.set-row > span small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; margin-top: 2px; }
+.section.first { margin-top: 4px; }
+.test-sound { margin: 10px 0 12px; }
 .swatches { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .swatch { width: 30px; height: 30px; border-radius: 50%; }
 .swatch.on { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--text); }
