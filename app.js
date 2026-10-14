@@ -1,7 +1,7 @@
 ﻿'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.9.1';
+const VERSION = '1.9.2';
 window.BOBY_VERSION = VERSION;
 // Ancienne page restée en mémoire avec le nouveau code (fichiers manquants) : on recharge une page neuve
 if ((typeof MOTIV_ACTIONS === 'undefined' || typeof TIMER_ACTIONS === 'undefined') && !/[?&]fresh=/.test(location.search)) {
