@@ -14,6 +14,44 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="styles.css">
+<script>
+/* Détecteur d'erreurs : envoie le message d'erreur (jamais les données) pour qu'on puisse corriger,
+   et propose « Réparer » si l'écran reste vide. */
+window.__errs = [];
+window.__report = function (msg, stack) {
+  try {
+    if (window.__errs.length >= 5) return;
+    window.__errs.push(String(msg));
+    var s = function (v, n) { return { stringValue: String(v || '').slice(0, n) }; };
+    fetch('https://firestore.googleapis.com/v1/projects/bobymusc-app/databases/(default)/documents/errors?key=AIzaSyACuZRFeRSHC9A6slkTVNjnQbflv-2ls5U', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { msg: s(msg, 1900), stack: s(stack, 3900), ua: s(navigator.userAgent, 300), route: s(location.hash, 100), v: s(window.BOBY_VERSION, 20), at: { integerValue: String(Date.now()) } } }),
+    }).catch(function () {});
+  } catch (e) { /* rien */ }
+};
+window.addEventListener('error', function (e) {
+  if (!e.message) return;
+  window.__report(e.message + ' @ ' + (e.filename || '').split('/').pop() + ':' + (e.lineno || '') + ':' + (e.colno || ''), e.error && e.error.stack);
+});
+window.__fix = function () {
+  var done = function () { location.reload(); };
+  try {
+    var jobs = [];
+    if ('serviceWorker' in navigator) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+    if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+    Promise.all(jobs).then(done, done);
+  } catch (e) { done(); }
+};
+window.addEventListener('load', function () {
+  setTimeout(function () {
+    var v = document.getElementById('view');
+    if (!v || v.innerHTML.trim() || document.body.classList.contains('onboarding')) return;
+    v.innerHTML = '<div class="empty">😕 BobyMusc n’a pas réussi à s’afficher.<br><small class="err-msg"></small><br><br>' +
+      '<button class="btn primary" onclick="__fix()">🔧 Réparer</button></div>';
+    v.querySelector('.err-msg').textContent = window.__errs[0] || 'Erreur inconnue';
+  }, 2000);
+});
+</script>
 </head>
 <body>
 <header id="top"></header>

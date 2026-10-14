@@ -1,6 +1,6 @@
 /* BobyMusc — permet à l'appli de marcher sans internet.
    Changer CACHE à chaque nouvelle version pour que les téléphones la récupèrent. */
-const CACHE = 'bobymusc-1.5.0';
+const CACHE = 'bobymusc-1.5.2';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'exercises.js', 'motivation.js', 'cloud.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 const SDK = 'https://www.gstatic.com/firebasejs/';
@@ -25,9 +25,14 @@ self.addEventListener('fetch', e => {
   }
   if (new URL(e.request.url).origin !== location.origin) return;
   // Réseau d'abord (pour avoir les mises à jour), sinon la copie enregistrée
+  // « no-cache » : toujours demander au serveur s'il y a plus récent (évite de mélanger deux versions)
+  const fresh = e.request.mode === 'navigate'
+    ? fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })
+    : fetch(e.request, { cache: 'no-cache' });
   e.respondWith(
-    fetch(e.request)
+    fresh
       .then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
-      .catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('index.html')))
+      // Page d'accueil de secours seulement pour une page, jamais à la place d'un script
+      .catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || (e.request.mode === 'navigate' ? caches.match('index.html') : Response.error())))
   );
 });

@@ -1,7 +1,13 @@
 'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.5.0';
+const VERSION = '1.5.2';
+window.BOBY_VERSION = VERSION;
+// Ancienne page restée en mémoire avec le nouveau code (fichiers manquants) : on recharge une page neuve
+if (typeof MOTIV_ACTIONS === 'undefined' && !/[?&]fresh=/.test(location.search)) {
+  location.replace(location.pathname + '?fresh=' + Date.now() + location.hash);
+  throw new Error('Ancienne page en mémoire : rechargement');
+}
 const APP_URL = 'https://bobymusc-app.web.app/';
 const KEY = 'bobmusc-data-v1';
 const LB = 2.20462;
@@ -1187,6 +1193,22 @@ function render() {
   const r = route[0] || 'home';
   if (r !== 'routine') draft = null;
   let v;
+  try {
+    v = viewFor(r);
+  } catch (e) {
+    // Une page plante : on le signale et on affiche l'erreur au lieu d'un écran vide
+    console.error(e);
+    if (window.__report) window.__report('render ' + r + ' : ' + e.message, e.stack);
+    v = {
+      title: 'Oups', back: r === 'home' ? '' : '#/home',
+      html: `<div class="empty">😕 Cette page a rencontré un problème.<br><small>${esc(e.message)}</small><br><br>
+        <button class="btn primary" onclick="__fix()">🔧 Réparer</button></div>`,
+    };
+  }
+  finishRender(v, r, hash);
+}
+function viewFor(r) {
+  let v;
   switch (r) {
     case 'home': v = vHome(); break;
     case 'workout': v = vWorkout(route[1]); break;
@@ -1208,6 +1230,9 @@ function render() {
     case 'groupinfo': v = vGroupInfo(route[1]); break;
     default: v = vNotFound();
   }
+  return v;
+}
+function finishRender(v, r, hash) {
   document.body.classList.toggle('in-active', r === 'active');
   document.body.classList.toggle('in-chat', r === 'group');
   $('#top').innerHTML = `${v.back ? `<button class="icon back ${v.backCls || ''}" data-a="back" data-to="${v.back}" aria-label="Retour">${v.backIcon || '‹'}</button>` : ''}
@@ -1959,7 +1984,7 @@ function shareWorkout(w) {
   else navigator.clipboard.writeText(text).then(() => toast('Séance copiée ✔'), () => toast('Partage impossible'));
 }
 
-Object.assign(A, MOTIV_ACTIONS);
+if (typeof MOTIV_ACTIONS !== 'undefined') Object.assign(A, MOTIV_ACTIONS);
 
 /* ---------- Écouteurs ---------- */
 document.addEventListener('click', e => {
@@ -2070,7 +2095,9 @@ function loadCloud() {
 load();
 rebuildEx();
 // Badges déjà mérités avant cette version : comptés comme « vus » (pas de pluie de badges)
-if (!db.badgesSeen && db.settings.onboarded) { db.badgesSeen = badgesState().filter(b => b.ok).map(b => b.id); save(); }
+try {
+  if (!db.badgesSeen && db.settings.onboarded) { db.badgesSeen = badgesState().filter(b => b.ok).map(b => b.id); save(); }
+} catch (e) { if (window.__report) window.__report('badges au démarrage : ' + e.message, e.stack); }
 if (!db.badgesSeen) db.badgesSeen = [];
 applyTheme();
 render();

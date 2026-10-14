@@ -10,6 +10,13 @@ service cloud.firestore {
     // « uid » n'a pas mis ses séances en privé
     function shares(uid) { return get(/databases/$(database)/documents/users/$(uid)).data.get('private', false) != true; }
 
+    // Rapports d'erreur de l'appli (message technique seulement) : on peut en créer, personne ne les lit
+    match /errors/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['msg', 'stack', 'ua', 'route', 'v', 'at'])
+        && request.resource.data.msg is string && request.resource.data.msg.size() < 2000
+        && request.resource.data.stack.size() < 4000;
+    }
+
     // Code ami -> identifiant
     match /codes/{code} {
       allow get: if signedIn();
