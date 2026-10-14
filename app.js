@@ -1,7 +1,7 @@
 'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 window.BOBY_VERSION = VERSION;
 // Ancienne page restée en mémoire avec le nouveau code (fichiers manquants) : on recharge une page neuve
 if ((typeof MOTIV_ACTIONS === 'undefined' || typeof TIMER_ACTIONS === 'undefined') && !/[?&]fresh=/.test(location.search)) {
@@ -318,6 +318,15 @@ function exIcon(e) {
   if (hasPhoto(e.id)) return `<img class="ex-icon ex-photo" src="img/ex/${e.id}-t.jpg" alt="" loading="lazy">`;
   const letters = e.name.replace(/\(.*?\)/g, '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
   return `<div class="ex-icon m-${norm(e.muscle).replace(/[^a-z]/g, '')}">${esc(letters)}</div>`;
+}
+// Consignes : étapes numérotées, puis le conseil ou l'erreur à éviter dans un encadré
+function exTips(id) {
+  const t = typeof EX_TIPS !== 'undefined' && EX_TIPS[id];
+  if (!t) return '';
+  const steps = t.filter(x => !/^(⚠️|💡)/.test(x)), notes = t.filter(x => /^(⚠️|💡)/.test(x));
+  return `<div class="card tips"><div class="card-title">Comment faire</div>
+    <ol>${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>
+    ${notes.map(x => `<div class="tip-note ${x.startsWith('⚠️') ? 'warn' : ''}">${esc(x)}</div>`).join('')}</div>`;
 }
 // Démonstration animée : position de départ et d'arrivée qui s'alternent
 function exDemo(id) {
@@ -683,6 +692,7 @@ function vGroup(gid) {
         <textarea id="msg-in" rows="1" placeholder="Message…" maxlength="1000">${esc(ui.chatDraft || '')}</textarea>
         <button class="send-btn" data-a="send-msg" aria-label="Envoyer">➤</button>
         <input type="file" id="photo-in" accept="image/*" hidden>
+        <input type="file" id="photo-cam" accept="image/*" capture="environment" hidden>
       </div>`,
   };
 }
@@ -974,6 +984,7 @@ function vExercise(id) {
     title: 'Exercice', back: '#/exercises',
     actions: e0.custom ? `<button class="icon" data-a="custom-menu" data-id="${id}" aria-label="Options">⋯</button>` : '',
     html: `${exDemo(id)}<div class="ex-hero">${hasPhoto(id) ? '' : exIcon(e0)}<div><h2>${esc(e0.name)}</h2><div class="muted">${esc(e0.muscle)} · ${esc(e0.equip)} · ${esc(EX_TYPES[e0.type])}</div></div></div>
+      ${exTips(id)}
       <a class="btn ghost block" href="https://www.youtube.com/results?search_query=${q}" target="_blank" rel="noopener">▶ Voir comment le faire (vidéos)</a>
       ${ss.length ? `
       <div class="card"><div class="card-title">Progression</div>
@@ -1703,7 +1714,11 @@ const A = {
     box.value = ''; ui.chatDraft = ''; autoGrow(box);
     try { await C().sendMessage(route[1], { text }); } catch (e) { toast(C().errMsg(e)); box.value = text; }
   },
-  'send-photo': () => $('#photo-in').click(),
+  // Les Android récents ne proposent plus l'appareil photo dans le sélecteur : on offre les deux choix
+  'send-photo': () => menu('Envoyer une photo', [
+    { label: '📷 Prendre une photo', fn: () => $('#photo-cam').click() },
+    { label: '🖼️ Choisir dans la galerie', fn: () => $('#photo-in').click() },
+  ]),
   'share-workout': () => {
     const ws = sortedWorkouts().slice(0, 8);
     if (!ws.length) { toast('Tu n’as pas encore de séance à partager'); return; }
@@ -1853,6 +1868,7 @@ const A = {
     box.innerHTML = `<div class="backdrop" data-a="demo-close"></div><div class="sheet demo-sheet">
       ${exDemo(d.id) || exIcon(e0)}
       <h2>${esc(e0.name)}</h2><div class="muted">${esc(e0.muscle)} · ${esc(e0.equip)}</div>
+      ${exTips(d.id)}
       <a class="btn ghost block" href="https://www.youtube.com/results?search_query=${encodeURIComponent(e0.name.replace(/\(.*?\)/g, '') + ' musculation exécution')}" target="_blank" rel="noopener">▶ Voir en vidéo</a>
       <button class="btn primary block" data-a="demo-close">Fermer</button></div>`;
     box.classList.add('open');
@@ -2082,7 +2098,7 @@ document.addEventListener('change', e => {
     }).catch(() => toast('Impossible d’ouvrir cette photo'));
     return;
   }
-  if (t.id === 'photo-in' && t.files[0]) {
+  if ((t.id === 'photo-in' || t.id === 'photo-cam') && t.files[0]) {
     const file = t.files[0], gid = route[1];
     t.value = '';
     const caption = $('#msg-in').value.trim();

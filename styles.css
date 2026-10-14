@@ -403,6 +403,11 @@ img.ex-icon { object-fit: cover; background: #fff; padding: 0; }
 @keyframes demo-swap { 0%, 42% { opacity: 0; } 50%, 92% { opacity: 1; } 100% { opacity: 0; } }
 .demo-tag { position: absolute; left: 10px; bottom: 10px; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 99px; }
 .ex-demo.paused .demo-tag::after { content: ' · pause'; }
+.tips ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; line-height: 1.4; }
+.tips li::marker { color: var(--accent); font-weight: 800; }
+.tip-note { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--ok) 14%, var(--card2)); font-size: 14px; line-height: 1.4; }
+.tip-note.warn { background: color-mix(in srgb, var(--warm) 18%, var(--card2)); }
+.demo-sheet .tips { text-align: left; }
 #demo { position: fixed; inset: 0; z-index: 70; display: none; }
 #demo.open { display: block; }
 .demo-sheet h2 { margin: 0 0 4px; }

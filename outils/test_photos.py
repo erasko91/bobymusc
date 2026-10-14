@@ -27,6 +27,8 @@ with sync_playwright() as p:
     # Page d'un exercice au nom compliqué
     page.goto('http://localhost:8765/#/exercise/good_morning'); page.wait_for_timeout(1200)
     print('démo good morning :', page.evaluate("[...document.querySelectorAll('.ex-demo img')].map(i => i.naturalWidth)"))
+    print('consignes :', page.locator('.tips li').count(), 'étapes +', page.locator('.tip-note').count(), 'conseil')
+    page.screenshot(path=os.path.join(SHOTS, 'p02c_consignes.png'), full_page=True)
     page.screenshot(path=os.path.join(SHOTS, 'p02_demo.png'))
     page.wait_for_timeout(1300)
     page.screenshot(path=os.path.join(SHOTS, 'p02b_demo_arrivee.png'))
