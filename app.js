@@ -1,10 +1,10 @@
 'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.5.2';
+const VERSION = '1.6.0';
 window.BOBY_VERSION = VERSION;
 // Ancienne page restée en mémoire avec le nouveau code (fichiers manquants) : on recharge une page neuve
-if (typeof MOTIV_ACTIONS === 'undefined' && !/[?&]fresh=/.test(location.search)) {
+if ((typeof MOTIV_ACTIONS === 'undefined' || typeof TIMER_ACTIONS === 'undefined') && !/[?&]fresh=/.test(location.search)) {
   location.replace(location.pathname + '?fresh=' + Date.now() + location.hash);
   throw new Error('Ancienne page en mémoire : rechargement');
 }
@@ -821,8 +821,11 @@ function vTrain() {
     <p class="muted small">${r.exercises.map(e => esc(ex(e.ex).name)).join(', ') || 'Aucun exercice'}</p>
     <button class="btn primary block" data-a="start-routine" data-id="${r.id}">Démarrer</button></div>`).join('');
   const tpl = TEMPLATES.map((t, i) => `<div class="card tpl">
-    <div><div class="wcard-name">${esc(t.name)}</div><div class="muted small">${esc(t.desc)} · ${t.ex.length} exercices</div></div>
-    <button class="btn ghost" data-a="add-template" data-i="${i}">Ajouter</button></div>`).join('');
+    <button class="tpl-info" data-a="tpl-view" data-i="${i}"><div class="wcard-name">${esc(t.name)}</div>
+      <div class="muted small">${esc(t.desc)} · ${t.ex.length} exercices</div>
+      <div class="muted small ellipsis tpl-ex">${t.ex.map(([id]) => esc(ex(id).name.replace(/\s*\(.*?\)/g, ''))).join(', ')}</div></button>
+    <div class="tpl-btns"><button class="btn ghost small" data-a="tpl-view" data-i="${i}">👁 Voir</button>
+      <button class="btn ghost small" data-a="add-template" data-i="${i}">＋ Ajouter</button></div></div>`).join('');
   return {
     title: 'Entraînement',
     html: `${db.active ? '' : `<button class="btn primary block big" data-a="start-empty">＋ Démarrer une séance vide</button>`}
@@ -1185,7 +1188,7 @@ function bmiInfo() {
 }
 
 /* ---------- Rendu principal ---------- */
-const TAB_OF = { home: 'home', workout: 'home', train: 'train', routine: 'train', active: 'train', exercises: 'exercises', exercise: 'exercises', profile: 'profile', measures: 'profile', settings: 'profile', friends: 'friends', friend: 'friends', fworkout: 'friends', group: 'friends', groupinfo: 'friends', goals: 'profile', badges: 'profile', recap: 'profile' };
+const TAB_OF = { home: 'home', workout: 'home', train: 'train', routine: 'train', active: 'train', exercises: 'exercises', exercise: 'exercises', profile: 'profile', measures: 'profile', settings: 'profile', friends: 'friends', friend: 'friends', fworkout: 'friends', group: 'friends', groupinfo: 'friends', goals: 'profile', badges: 'profile', recap: 'profile', timer: 'timer' };
 function render() {
   if (!db.settings.onboarded) { renderOnboarding(); return; }
   const hash = location.hash || '#/home';
@@ -1223,6 +1226,7 @@ function viewFor(r) {
     case 'friends': v = vFriends(); break;
     case 'friend': v = vFriend(route[1]); break;
     case 'fworkout': v = vFriendWorkout(route[1], route[2]); break;
+    case 'timer': v = vTimer(); break;
     case 'goals': v = vGoals(); break;
     case 'badges': v = vBadges(); break;
     case 'recap': v = vRecap(route[1]); break;
@@ -1831,7 +1835,26 @@ const A = {
       { label: '🗑 Supprimer', danger: true, fn: () => confirmBox(`Supprimer le programme « ${esc(r.name)} » ?`, 'Supprimer', () => { db.routines = db.routines.filter(x => x.id !== r.id); save(); render(); }) },
     ]);
   },
+  // Aperçu d'un programme prêt à l'emploi avant de l'ajouter
+  'tpl-view': d => {
+    const t = TEMPLATES[+d.i];
+    const muscles = [...new Set(t.ex.map(([id]) => ex(id).muscle))];
+    const totalSets = t.ex.reduce((a, [, n]) => a + n, 0);
+    openSheet(`<h2>${esc(t.name)}</h2>
+      <p class="muted">${esc(t.desc)}</p>
+      <div class="stats3">${stat('Exercices', t.ex.length)}${stat('Séries', totalSets)}${stat('Durée estimée', '≈ ' + Math.round(totalSets * 2.5 / 5) * 5 + ' min')}</div>
+      <div class="chips wrap">${muscles.map(m => `<span class="chip">${esc(m)}</span>`).join('')}</div>
+      <div class="menu-links tpl-list">${t.ex.map(([id, n, reps]) => {
+        const e0 = ex(id);
+        return `<div class="list-item">${exIcon(e0)}<div class="grow"><b>${esc(e0.name)}</b><div class="muted small">${esc(e0.muscle)} · ${esc(e0.equip)}</div></div>
+          <span class="tpl-sets">${n} × ${e0.type === 'time' ? reps + ' s' : reps}</span></div>`;
+      }).join('')}</div>
+      <p class="muted small">Tu pourras modifier les exercices, les séries et les répétitions après l’avoir ajouté.</p>
+      <button class="btn primary block" data-a="add-template" data-i="${d.i}">＋ Ajouter à mes programmes</button>
+      <button class="btn ghost block" data-a="close-modal">Fermer</button>`);
+  },
   'add-template': d => {
+    closeModal();
     const t = TEMPLATES[+d.i];
     const exs = t.ex.map(([id, n, reps]) => ({ ex: id, sets: Array.from({ length: n }, () => ex(id).type === 'time' ? { s: reps } : { r: reps }) }));
     db.routines.push(routineFromExercises(t.name, exs));
@@ -1985,6 +2008,7 @@ function shareWorkout(w) {
 }
 
 if (typeof MOTIV_ACTIONS !== 'undefined') Object.assign(A, MOTIV_ACTIONS);
+if (typeof TIMER_ACTIONS !== 'undefined') Object.assign(A, TIMER_ACTIONS);
 
 /* ---------- Écouteurs ---------- */
 document.addEventListener('click', e => {
@@ -2102,6 +2126,7 @@ if (!db.badgesSeen) db.badgesSeen = [];
 applyTheme();
 render();
 setInterval(tick, 500);
+if (typeof timerTick === 'function') { setInterval(timerTick, 250); if (tmRunning()) tmKeepAwake(true); }
 loadCloud();
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
