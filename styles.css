@@ -393,6 +393,21 @@ body.in-chat { padding-bottom: calc(76px + var(--safe-b)); }
 .sheet.photo { padding: 10px 10px calc(10px + var(--safe-b)); }
 .photo-full { width: 100%; max-height: 72vh; object-fit: contain; border-radius: 12px; display: block; margin-bottom: 8px; background: #000; }
 
+/* Photos des exercices */
+img.ex-icon { object-fit: cover; background: #fff; padding: 0; }
+.ex-row { text-align: left; }
+.ex-demo { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius); overflow: hidden; background: #fff; margin-bottom: 14px; cursor: pointer; }
+.ex-demo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ex-demo img.b { animation: demo-swap 2.4s infinite; }
+.ex-demo.paused img.b { animation-play-state: paused; }
+@keyframes demo-swap { 0%, 42% { opacity: 0; } 50%, 92% { opacity: 1; } 100% { opacity: 0; } }
+.demo-tag { position: absolute; left: 10px; bottom: 10px; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 99px; }
+.ex-demo.paused .demo-tag::after { content: ' · pause'; }
+#demo { position: fixed; inset: 0; z-index: 70; display: none; }
+#demo.open { display: block; }
+.demo-sheet h2 { margin: 0 0 4px; }
+.demo-sheet .muted { margin-bottom: 14px; }
+
 /* Onglet Minuteur */
 #nav a { white-space: nowrap; }
 #nav a.ticking { color: var(--accent); font-variant-numeric: tabular-nums; }

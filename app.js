@@ -1,7 +1,7 @@
 'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 window.BOBY_VERSION = VERSION;
 // Ancienne page restée en mémoire avec le nouveau code (fichiers manquants) : on recharge une page neuve
 if ((typeof MOTIV_ACTIONS === 'undefined' || typeof TIMER_ACTIONS === 'undefined') && !/[?&]fresh=/.test(location.search)) {
@@ -312,9 +312,19 @@ function chips(list, cur, action, extra = '') {
   return `<div class="chips">${list.map(([v, l]) => `<button class="chip ${v === cur ? 'on' : ''}" data-a="${action}" data-v="${esc(v)}" ${extra}>${esc(l)}</button>`).join('')}</div>`;
 }
 function stat(label, value) { return `<div class="stat"><div class="stat-v">${value}</div><div class="stat-l">${label}</div></div>`; }
+// Photo de l'exercice si on en a une, sinon ses initiales sur la couleur du muscle
+const hasPhoto = id => typeof EX_IMG !== 'undefined' && EX_IMG.has(id);
 function exIcon(e) {
+  if (hasPhoto(e.id)) return `<img class="ex-icon ex-photo" src="img/ex/${e.id}-t.jpg" alt="" loading="lazy">`;
   const letters = e.name.replace(/\(.*?\)/g, '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
   return `<div class="ex-icon m-${norm(e.muscle).replace(/[^a-z]/g, '')}">${esc(letters)}</div>`;
+}
+// Démonstration animée : position de départ et d'arrivée qui s'alternent
+function exDemo(id) {
+  if (!hasPhoto(id)) return '';
+  return `<div class="ex-demo" data-a="demo-toggle" title="Appuie pour mettre en pause">
+    <img src="img/ex/${id}-0.jpg" alt="Position de départ"><img class="b" src="img/ex/${id}-1.jpg" alt="Position d’arrivée">
+    <span class="demo-tag">Départ ⇄ arrivée</span></div>`;
 }
 // author : nom de l'ami qui a fait la séance (fil d'actualité)
 function workoutCard(w, author = null, authorImg = null) {
@@ -342,7 +352,7 @@ function reactionSummary(w) {
 function workoutBlocks(w, own) {
   const prKey = new Set((w.prs || []).map(p => p.ex));
   return w.exercises.map(e => {
-    const e0 = { name: exName(e), muscle: exMuscle(e), type: exType(e) };
+    const e0 = { id: e.ex, name: exName(e), muscle: exMuscle(e), type: exType(e) };
     let n = 0;
     const rows = e.sets.map(s => {
       const code = s.t && s.t !== 'n' ? SET_CODES[s.t] : String(++n);
@@ -900,7 +910,7 @@ function exEditor(ctx) {
     const rest = e.rest ?? db.settings.rest;
     return `<div class="card ex-card">
       <div class="ex-head">
-        <a class="ex-row" href="#/exercise/${e.ex}">${exIcon(e0)}<div class="ex-name accent">${esc(e0.name)}</div></a>
+        <button class="ex-row" data-a="ex-demo" data-id="${e.ex}">${exIcon(e0)}<div class="ex-name accent">${esc(e0.name)}</div></button>
         <button class="icon" data-a="ex-menu" data-ctx="${ctx}" data-ei="${ei}" aria-label="Options">⋯</button>
       </div>
       <input class="note-in" data-f="note" data-ctx="${ctx}" data-ei="${ei}" value="${esc(e.note || '')}" placeholder="Ajouter une note…">
@@ -931,9 +941,11 @@ function exList(q, m, mode) {
   const counts = {};
   for (const w of db.workouts) for (const e of w.exercises) counts[e.ex] = (counts[e.ex] || 0) + 1;
   return list.map(e => {
-    const inner = `${exIcon(e)}<div class="grow"><div class="ex-name">${esc(e.name)}${e.custom ? ' <span class="tag">perso</span>' : ''}</div>
+    let inner = `${exIcon(e)}<div class="grow"><div class="ex-name">${esc(e.name)}${e.custom ? ' <span class="tag">perso</span>' : ''}</div>
       <div class="muted small">${esc(e.muscle)} · ${esc(e.equip)}${counts[e.id] ? ` · fait ${counts[e.id]} fois` : ''}</div></div>`;
     if (mode === 'link') return `<a class="list-item" href="#/exercise/${e.id}">${inner}<span class="muted">›</span></a>`;
+    // Dans le sélecteur : un appui sur la photo montre la démo (sans perdre la sélection)
+    if (hasPhoto(e.id)) inner = inner.replace('<img class="ex-icon', `<img data-a="ex-demo" data-id="${e.id}" class="ex-icon`);
     const sel = picker && picker.sel.includes(e.id);
     return `<button class="list-item ${sel ? 'sel' : ''}" data-a="pk-item" data-id="${e.id}">${inner}<span class="pk-check">${sel ? '✓' : ''}</span></button>`;
   }).join('');
@@ -961,7 +973,7 @@ function vExercise(id) {
   return {
     title: 'Exercice', back: '#/exercises',
     actions: e0.custom ? `<button class="icon" data-a="custom-menu" data-id="${id}" aria-label="Options">⋯</button>` : '',
-    html: `<div class="ex-hero">${exIcon(e0)}<div><h2>${esc(e0.name)}</h2><div class="muted">${esc(e0.muscle)} · ${esc(e0.equip)} · ${esc(EX_TYPES[e0.type])}</div></div></div>
+    html: `${exDemo(id)}<div class="ex-hero">${hasPhoto(id) ? '' : exIcon(e0)}<div><h2>${esc(e0.name)}</h2><div class="muted">${esc(e0.muscle)} · ${esc(e0.equip)} · ${esc(EX_TYPES[e0.type])}</div></div></div>
       <a class="btn ghost block" href="https://www.youtube.com/results?search_query=${q}" target="_blank" rel="noopener">▶ Voir comment le faire (vidéos)</a>
       ${ss.length ? `
       <div class="card"><div class="card-title">Progression</div>
@@ -1835,6 +1847,18 @@ const A = {
       { label: '🗑 Supprimer', danger: true, fn: () => confirmBox(`Supprimer le programme « ${esc(r.name)} » ?`, 'Supprimer', () => { db.routines = db.routines.filter(x => x.id !== r.id); save(); render(); }) },
     ]);
   },
+  // Démo d'un exercice dans une fenêtre par-dessus tout (ne ferme pas le sélecteur ni la séance)
+  'ex-demo': d => {
+    const e0 = ex(d.id), box = $('#demo');
+    box.innerHTML = `<div class="backdrop" data-a="demo-close"></div><div class="sheet demo-sheet">
+      ${exDemo(d.id) || exIcon(e0)}
+      <h2>${esc(e0.name)}</h2><div class="muted">${esc(e0.muscle)} · ${esc(e0.equip)}</div>
+      <a class="btn ghost block" href="https://www.youtube.com/results?search_query=${encodeURIComponent(e0.name.replace(/\(.*?\)/g, '') + ' musculation exécution')}" target="_blank" rel="noopener">▶ Voir en vidéo</a>
+      <button class="btn primary block" data-a="demo-close">Fermer</button></div>`;
+    box.classList.add('open');
+  },
+  'demo-close': () => { $('#demo').classList.remove('open'); $('#demo').innerHTML = ''; },
+  'demo-toggle': (d, el) => el.classList.toggle('paused'),
   // Aperçu d'un programme prêt à l'emploi avant de l'ajouter
   'tpl-view': d => {
     const t = TEMPLATES[+d.i];
@@ -2100,6 +2124,7 @@ document.addEventListener('visibilitychange', () => {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (db.settings.theme === 'auto') applyTheme(); });
 window.addEventListener('hashchange', () => {
   closeModal();
+  A['demo-close']();
   render();
   if (afterNav) { const f = afterNav; afterNav = null; f(); }
 });

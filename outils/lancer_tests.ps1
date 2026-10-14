@@ -14,6 +14,7 @@ try {
     @('test_app.py', $shots),
     @('test_tpl.py', $shots),
     @('test_timer.py', $shots),
+    @('test_photos.py', $shots),
     @('test_friends.py', $shots, (Join-Path $shots 'uids1.json')),
     @('test_settings.py', $shots, (Join-Path $shots 'uids2.json')),
     @('test_groups.py', $shots, $photo),
