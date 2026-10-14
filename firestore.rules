@@ -17,6 +17,25 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.uid == me();
     }
 
+    // Groupes : seuls les membres voient le groupe et ses messages
+    match /groups/{gid} {
+      allow read: if signedIn() && me() in resource.data.members;
+      allow create: if signedIn() && request.resource.data.owner == me()
+        && me() in request.resource.data.members && request.resource.data.members.size() <= 50;
+      // Un membre peut renommer, ajouter des amis, se retirer ; seul le créateur peut passer la main
+      allow update: if signedIn() && me() in resource.data.members
+        && request.resource.data.members.size() <= 50
+        && (request.resource.data.owner == resource.data.owner || resource.data.owner == me());
+      allow delete: if signedIn() && resource.data.owner == me();
+
+      match /messages/{mid} {
+        function group() { return get(/databases/$(database)/documents/groups/$(gid)).data; }
+        allow read: if signedIn() && me() in group().members;
+        allow create: if signedIn() && me() in group().members && request.resource.data.uid == me();
+        allow delete: if signedIn() && (resource.data.uid == me() || group().owner == me());
+      }
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (uid == me() || isFriend(uid));
       allow write: if signedIn() && uid == me();

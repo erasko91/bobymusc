@@ -345,6 +345,54 @@ tr.done .in { background: transparent; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Groupes et discussion */
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.group-item .grow { min-width: 0; }
+.g-emoji { width: 46px; height: 46px; border-radius: 14px; background: var(--card2); display: flex; align-items: center; justify-content: center; font-size: 24px; flex: none; }
+.g-emoji.big { width: 76px; height: 76px; font-size: 40px; border-radius: 22px; margin: 0 auto 10px; }
+.dot { width: 11px; height: 11px; border-radius: 50%; background: var(--accent); flex: none; }
+.group-hero { text-align: center; padding: 10px 0 16px; }
+.emoji-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.emoji-pick button { width: 44px; height: 44px; border-radius: 12px; background: var(--card2); font-size: 22px; }
+.emoji-pick button.on { box-shadow: inset 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 20%, var(--card2)); }
+.pick-friends { padding: 0 8px; margin-top: 4px; max-height: 40vh; overflow-y: auto; color: var(--text); }
+.pick-friends .list-item.sel .pk-check { background: var(--accent); border-color: var(--accent); }
+.group-title { display: flex; flex-direction: column; line-height: 1.15; overflow: hidden; }
+.group-title small { font-size: 12px; color: var(--muted); font-weight: 500; }
+body.in-chat #nav, body.in-chat #activebar { display: none; }
+body.in-chat { padding-bottom: calc(76px + var(--safe-b)); }
+.msgs { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; }
+.day-sep { align-self: center; font-size: 12px; color: var(--muted); background: var(--card2); padding: 3px 10px; border-radius: 99px; margin: 12px 0 6px; }
+.msg { display: flex; flex-direction: column; align-items: flex-start; max-width: 82%; }
+.msg.mine { align-self: flex-end; align-items: flex-end; }
+.msg-name { font-size: 12px; color: var(--accent); font-weight: 700; margin: 6px 0 2px 10px; }
+.bubble {
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px 18px 18px 6px; padding: 8px 12px 6px; position: relative;
+  overflow-wrap: anywhere; cursor: pointer;
+}
+.msg.mine .bubble { background: var(--accent); color: #fff; border-color: transparent; border-radius: 18px 18px 6px 18px; }
+.msg-text { font-size: 15px; line-height: 1.35; }
+.msg-time { display: block; text-align: right; font-size: 10.5px; opacity: .65; margin-top: 2px; }
+.msg-img { display: block; max-width: 100%; width: 260px; max-height: 340px; object-fit: cover; border-radius: 12px; margin: 2px -4px 6px; cursor: zoom-in; }
+.msg-workout { min-width: 200px; }
+.msg-workout .mw-title { font-weight: 750; }
+.msg-workout .mini-stats { margin: 6px 0 4px; font-size: 13px; gap: 10px; }
+.msg.mine .msg-workout .wcard-ex, .msg.mine .msg-workout .mini-stats { color: #fff; }
+.composer {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; display: flex; align-items: flex-end; gap: 4px;
+  background: var(--card); border-top: 1px solid var(--line); padding: 8px 8px calc(8px + var(--safe-b));
+}
+.composer textarea {
+  flex: 1; min-width: 0; resize: none; border: 1px solid var(--line); background: var(--card2); border-radius: 20px;
+  padding: 9px 14px; font-size: 16px; line-height: 1.3; outline: none; max-height: 120px; color: var(--text);
+}
+.composer textarea:focus { border-color: var(--accent); }
+.send-btn { width: 42px; height: 42px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 18px; flex: none; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 12px; }
+.photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: zoom-in; }
+.sheet.photo { padding: 10px 10px calc(10px + var(--safe-b)); }
+.photo-full { width: 100%; max-height: 72vh; object-fit: contain; border-radius: 12px; display: block; margin-bottom: 8px; background: #000; }
+
 /* Premier lancement */
 body.onboarding { padding-bottom: 0; }
 body.onboarding #top, body.onboarding #nav { display: none; }

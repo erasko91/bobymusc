@@ -1,7 +1,7 @@
 'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const APP_URL = 'https://bobymusc-app.web.app/';
 const KEY = 'bobmusc-data-v1';
 const LB = 2.20462;
@@ -420,7 +420,9 @@ function fetchOnce(key, fn, maxAge = 60000) {
 }
 const isLoading = key => net[key] && net[key].loading && net[key].data === undefined;
 function refreshIfVisible() {
-  if (!['friends', 'friend', 'fworkout', 'workout', 'settings'].includes(route[0])) return;
+  // Dans une discussion, on ne redessine que les messages (le texte en cours d'écriture reste en place)
+  if (route[0] === 'group' && $('#msgs') && C().state.groups.some(g => g.id === route[1])) { drawMessages(); return; }
+  if (!['friends', 'friend', 'fworkout', 'workout', 'settings', 'group', 'groupinfo'].includes(route[0])) return;
   const a = document.activeElement;
   if (a && a.closest && a.closest('#view') && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
   const y = window.scrollY;
@@ -458,6 +460,8 @@ function vFriends() {
     else if (feed === undefined) body = loader;
     else if (!feed || !feed.length) body = `<div class="empty">Tes amis n’ont pas encore enregistré de séance.</div>`;
     else body = feed.slice(0, 40).map(w => workoutCard(w, (st.friends.find(f => f.uid === w.owner) || {}).name || 'Ami')).join('');
+  } else if (tab === 'groups') {
+    body = groupsList();
   } else {
     body = st.friends.length ? `<div class="menu-links">${st.friends.map(f => `<a class="list-item" href="#/friend/${f.uid}">
         <div class="avatar sm">${esc((f.name || '?')[0].toUpperCase())}</div><span class="grow"><b>${esc(f.name)}</b></span><span class="muted">›</span></a>`).join('')}</div>`
@@ -474,7 +478,7 @@ function vFriends() {
         <button class="btn ghost" data-a="add-friend">Ajouter</button></div>
       </div>
       ${reqs ? `<h2 class="section">Demandes reçues</h2>${reqs}` : ''}
-      ${chips([['feed', 'Fil d’actualité'], ['list', `Mes amis (${st.friends.length})`]], tab, 'friends-tab')}
+      ${chips([['feed', 'Fil d’actualité'], ['groups', `Groupes${unreadCount() ? ' 🔴' : ''}`], ['list', `Mes amis (${st.friends.length})`]], tab, 'friends-tab')}
       ${body}`,
   };
 }
@@ -540,6 +544,170 @@ function vFriendWorkout(fid, wid) {
       </div>
       ${workoutBlocks(w, false)}`,
   };
+}
+
+/* ---------- Groupes ---------- */
+const GROUP_EMOJIS = ['💪', '🏋️', '🔥', '🦍', '⚡', '🏃', '❤️', '👯', '🥇', '🍗'];
+const unread = g => g.lastBy && g.lastBy !== C().state.user.uid && (g.lastAt || 0) > ((db.groupRead || {})[g.id] || 0);
+const unreadCount = () => C() && C().state.user ? C().state.groups.filter(unread).length : 0;
+function markRead(gid) {
+  db.groupRead = db.groupRead || {};
+  db.groupRead[gid] = Date.now();
+  try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { /* ignore */ }
+}
+function fmtWhen(t) {
+  const d = new Date(t), now = new Date();
+  if (isoDay(t) === isoDay(now.getTime())) return timeFmt.format(d);
+  if (now - d < 6 * DAY) return new Intl.DateTimeFormat('fr-FR', { weekday: 'short' }).format(d);
+  return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(d);
+}
+function groupsList() {
+  const gs = C().state.groups;
+  const create = `<button class="btn primary block" data-a="group-new">＋ Créer un groupe</button>`;
+  if (!gs.length) return `${create}<div class="empty">Crée un groupe avec ta conjointe ou tes potes de salle pour discuter, envoyer des photos et partager vos séances.</div>`;
+  return create + `<div class="menu-links">${gs.map(g => `<a class="list-item group-item" href="#/group/${g.id}">
+      <div class="g-emoji">${esc(g.emoji || '💪')}</div>
+      <div class="grow"><div class="row-between"><b>${esc(g.name)}</b><span class="muted small">${g.lastAt ? fmtWhen(g.lastAt) : ''}</span></div>
+      <div class="muted small ellipsis">${g.lastName && g.lastBy !== C().state.user.uid ? esc(g.lastName) + ' : ' : ''}${esc(g.lastText || '')}</div></div>
+      ${unread(g) ? '<span class="dot"></span>' : ''}</a>`).join('')}</div>`;
+}
+function groupForm(g = null) {
+  const cl = C();
+  const sel = new Set();
+  ui.groupEmoji = g ? g.emoji : '💪';
+  const friends = cl.state.friends.filter(f => !g || !g.members.includes(f.uid));
+  openSheet(`<h2>${g ? 'Modifier le groupe' : 'Nouveau groupe'}</h2>
+    <label class="field">Nom du groupe<input id="g-name" value="${esc(g ? g.name : '')}" placeholder="Ex. Les gros bras" maxlength="30"></label>
+    <div class="field">Emoji<div class="emoji-pick">${GROUP_EMOJIS.map(e => `<button class="${e === ui.groupEmoji ? 'on' : ''}" data-a="g-emoji" data-v="${e}">${e}</button>`).join('')}</div></div>
+    ${g ? '' : `<div class="field">Ajouter des amis${friends.length ? '' : ' <span class="muted">(ajoute d’abord des amis avec leur code)</span>'}
+      <div class="menu-links pick-friends">${friends.map(f => `<button class="list-item" data-a="g-friend" data-uid="${f.uid}"><div class="avatar sm">${esc((f.name || '?')[0].toUpperCase())}</div><span class="grow">${esc(f.name)}</span><span class="pk-check"></span></button>`).join('')}</div></div>`}
+    <button class="btn primary block" data-a="g-save" data-id="${g ? g.id : ''}">${g ? 'Enregistrer' : 'Créer le groupe'}</button>
+    <button class="btn ghost block" data-a="close-modal">Annuler</button>`);
+  ui.groupSel = sel;
+}
+
+// Discussion ouverte : on écoute les messages en direct tant qu'elle est affichée
+const chat = { gid: null, unsub: null, msgs: undefined, err: null };
+function watchChat(gid) {
+  if (chat.gid === gid) return;
+  stopChat();
+  chat.gid = gid; chat.msgs = undefined; chat.err = null;
+  chat.unsub = C().watchMessages(gid, (msgs, err) => {
+    if (err) { chat.err = err; chat.msgs = null; } else chat.msgs = msgs;
+    markRead(gid);
+    drawMessages();
+  });
+}
+function stopChat() {
+  if (chat.unsub) chat.unsub();
+  chat.gid = null; chat.unsub = null; chat.msgs = undefined;
+}
+function msgHtml(m, prev, me, g) {
+  const mine = m.uid === me;
+  const day = !prev || isoDay(prev.at) !== isoDay(m.at) ? `<div class="day-sep">${fmtDate(m.at)}</div>` : '';
+  const showName = !mine && (!prev || prev.uid !== m.uid || day);
+  let body = '';
+  if (m.img) body += `<img class="msg-img" src="${m.img}" alt="Photo" data-a="photo-view" data-mid="${m.id}" loading="lazy">`;
+  if (m.workout) {
+    const w = m.workout;
+    body += `<div class="msg-workout"><div class="mw-title">🏋️ ${esc(w.name)}</div>
+      <div class="mini-stats"><span>⏱ ${fmtDur(w.dur)}</span>${w.vol ? `<span>${fmtW(w.vol)}</span>` : ''}<span>✔ ${w.sets} séries</span>${w.prs ? `<span>🏆 ${w.prs}</span>` : ''}</div>
+      <ul class="wcard-ex">${w.ex.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
+  }
+  if (m.text) body += `<div class="msg-text">${esc(m.text).replace(/\n/g, '<br>')}</div>`;
+  return `${day}<div class="msg ${mine ? 'mine' : ''}" data-mid="${m.id}">
+    ${showName ? `<div class="msg-name">${esc(m.name || (g.memberNames || {})[m.uid] || 'Ami')}</div>` : ''}
+    <div class="bubble" ${mine || g.owner === me ? `data-a="msg-menu" data-mid="${m.id}"` : ''}>${body}<span class="msg-time">${timeFmt.format(new Date(m.at))}</span></div></div>`;
+}
+function drawMessages() {
+  const box = $('#msgs');
+  if (!box || route[0] !== 'group' || route[1] !== chat.gid) return;
+  const g = C().state.groups.find(x => x.id === chat.gid);
+  if (!g) return;
+  const me = C().state.user.uid;
+  if (chat.msgs === undefined) { box.innerHTML = loader; return; }
+  if (!chat.msgs) { box.innerHTML = `<div class="empty small">Impossible de charger les messages.</div>`; return; }
+  const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
+  box.innerHTML = chat.msgs.length
+    ? chat.msgs.map((m, i) => msgHtml(m, chat.msgs[i - 1], me, g)).join('')
+    : `<div class="empty small">Aucun message pour l’instant. Dis bonjour 👋 ou envoie une photo de ta séance !</div>`;
+  if (nearBottom || !box.dataset.drawn) { box.dataset.drawn = '1'; requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight)); }
+}
+function vGroup(gid) {
+  const cl = C();
+  if (!cl || !cl.state.ready) return { title: 'Groupe', back: '#/friends', html: loader };
+  if (!cl.state.user) { location.hash = '#/friends'; return { title: '', html: '' }; }
+  const g = cl.state.groups.find(x => x.id === gid);
+  if (!g) return { title: 'Groupe', back: '#/friends', html: cl.state.ready ? `<div class="empty">Ce groupe n’existe plus ou tu n’en fais plus partie.</div>` : loader };
+  return {
+    title: `<a class="group-title" href="#/groupinfo/${gid}">${esc(g.emoji || '💪')} ${esc(g.name)}<small>${g.members.length} membre${g.members.length > 1 ? 's' : ''}</small></a>`,
+    back: '#/friends',
+    actions: `<a class="icon" href="#/groupinfo/${gid}" aria-label="Infos du groupe">ⓘ</a>`,
+    html: `<div id="msgs" class="msgs"></div>
+      <div class="composer">
+        <button class="icon" data-a="send-photo" aria-label="Envoyer une photo">📷</button>
+        <button class="icon" data-a="share-workout" aria-label="Partager une séance">🏋️</button>
+        <textarea id="msg-in" rows="1" placeholder="Message…" maxlength="1000">${esc(ui.chatDraft || '')}</textarea>
+        <button class="send-btn" data-a="send-msg" aria-label="Envoyer">➤</button>
+        <input type="file" id="photo-in" accept="image/*" hidden>
+      </div>`,
+  };
+}
+function vGroupInfo(gid) {
+  const cl = C();
+  if (!cl || !cl.state.ready) return { title: 'Groupe', back: '#/friends', html: loader };
+  if (!cl.state.user) { location.hash = '#/friends'; return { title: '', html: '' }; }
+  const g = cl.state.groups.find(x => x.id === gid);
+  if (!g) return { title: 'Groupe', back: '#/friends', html: `<div class="empty">Ce groupe n’existe plus.</div>` };
+  const me = cl.state.user.uid;
+  const names = g.memberNames || {};
+  const photos = chat.gid === gid && chat.msgs ? chat.msgs.filter(m => m.img).reverse() : null;
+  return {
+    title: 'Infos du groupe', back: '#/group/' + gid,
+    html: `<div class="group-hero"><div class="g-emoji big">${esc(g.emoji || '💪')}</div><h2>${esc(g.name)}</h2>
+        <div class="muted">${g.members.length} membre${g.members.length > 1 ? 's' : ''} · créé le ${fmtDate(g.createdAt)}</div></div>
+      <button class="btn ghost block" data-a="group-edit" data-id="${gid}">✏️ Modifier le nom ou l’emoji</button>
+      <h2 class="section">Membres</h2>
+      <div class="menu-links">${g.members.map(u => `<div class="list-item"><div class="avatar sm">${esc((names[u] || '?')[0].toUpperCase())}</div>
+        <span class="grow"><b>${esc(names[u] || 'Membre')}</b>${u === me ? ' <span class="muted">(toi)</span>' : ''}</span>${u === g.owner ? '<span class="tag">créateur</span>' : ''}</div>`).join('')}</div>
+      <button class="btn ghost block" data-a="group-add" data-id="${gid}">＋ Ajouter des amis</button>
+      <h2 class="section">Photos</h2>
+      ${photos === null ? `<div class="empty small">Ouvre la discussion pour voir les photos.</div>`
+        : photos.length ? `<div class="photo-grid">${photos.map(m => `<img src="${m.img}" alt="Photo" data-a="photo-view" data-mid="${m.id}" loading="lazy">`).join('')}</div>`
+        : `<div class="empty small">Aucune photo pour l’instant.</div>`}
+      <h2 class="section"></h2>
+      <button class="btn danger-ghost block" data-a="group-leave" data-id="${gid}">Quitter le groupe</button>
+      ${g.owner === me ? `<button class="btn danger-ghost block" data-a="group-delete" data-id="${gid}">Supprimer le groupe pour tout le monde</button>` : ''}`,
+  };
+}
+
+// Photo : réduite à 1000 px et compressée en JPEG pour rester légère (≈ 100 Ko)
+async function compressImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = url; });
+    for (const [max, q] of [[1000, 0.72], [800, 0.6], [640, 0.5]]) {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const data = c.toDataURL('image/jpeg', q);
+      if (data.length < 300000) return data;
+    }
+    throw new Error('Photo trop lourde');
+  } finally { URL.revokeObjectURL(url); }
+}
+function workoutSummary(w) {
+  const t = workoutTotals(w);
+  return {
+    name: w.name, start: w.start, dur: w.end - w.start, vol: Math.round(t.vol), sets: t.sets, prs: (w.prs || []).length,
+    ex: w.exercises.slice(0, 6).map(e => `${e.sets.length} × ${exName(e)}`),
+  };
+}
+
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 
 function accountForm(mode) {
@@ -990,7 +1158,7 @@ function bmiInfo() {
 }
 
 /* ---------- Rendu principal ---------- */
-const TAB_OF = { home: 'home', workout: 'home', train: 'train', routine: 'train', active: 'train', exercises: 'exercises', exercise: 'exercises', profile: 'profile', measures: 'profile', settings: 'profile', friends: 'friends', friend: 'friends', fworkout: 'friends' };
+const TAB_OF = { home: 'home', workout: 'home', train: 'train', routine: 'train', active: 'train', exercises: 'exercises', exercise: 'exercises', profile: 'profile', measures: 'profile', settings: 'profile', friends: 'friends', friend: 'friends', fworkout: 'friends', group: 'friends', groupinfo: 'friends' };
 function render() {
   if (!db.settings.onboarded) { renderOnboarding(); return; }
   const hash = location.hash || '#/home';
@@ -1012,20 +1180,33 @@ function render() {
     case 'friends': v = vFriends(); break;
     case 'friend': v = vFriend(route[1]); break;
     case 'fworkout': v = vFriendWorkout(route[1], route[2]); break;
+    case 'group': v = vGroup(route[1]); break;
+    case 'groupinfo': v = vGroupInfo(route[1]); break;
     default: v = vNotFound();
   }
   document.body.classList.toggle('in-active', r === 'active');
+  document.body.classList.toggle('in-chat', r === 'group');
   $('#top').innerHTML = `${v.back ? `<button class="icon back ${v.backCls || ''}" data-a="back" data-to="${v.back}" aria-label="Retour">${v.backIcon || '‹'}</button>` : ''}
     <h1>${v.title}</h1><div class="acts">${v.actions || ''}</div>`;
   $('#view').innerHTML = v.html;
   $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.tab === TAB_OF[r]));
-  const nreq = C() && C().state.user ? C().state.requests.length : 0;
-  const badge = $('#nav-badge');
-  if (badge) { badge.hidden = !nreq; badge.textContent = nreq; }
+  updateNavBadge();
   renderActiveBar();
   renderRestBar(true);
-  if (hash !== lastHash) { window.scrollTo(0, 0); lastHash = hash; }
+  const changed = hash !== lastHash;
+  if (changed) { window.scrollTo(0, 0); lastHash = hash; }
   if (r === 'active') keepAwake();
+  // Discussion de groupe : on garde l'écoute ouverte aussi sur la page d'infos (pour l'album photo)
+  if ((r === 'group' || r === 'groupinfo') && C() && C().state.user && C().state.groups.some(g => g.id === route[1])) {
+    watchChat(route[1]);
+    if (r === 'group') drawMessages();
+  } else stopChat();
+}
+function updateNavBadge() {
+  const cl = C();
+  const n = cl && cl.state.user ? cl.state.requests.length + unreadCount() : 0;
+  const badge = $('#nav-badge');
+  if (badge) { badge.hidden = !n; badge.textContent = n; }
 }
 function renderActiveBar() {
   const bar = $('#activebar');
@@ -1397,6 +1578,88 @@ const A = {
       toast(e.code === 'auth/requires-recent-login' ? 'Par sécurité, déconnecte-toi, reconnecte-toi, puis réessaie.' : C().errMsg(e));
     }
   }),
+  /* Groupes */
+  'group-new': () => groupForm(),
+  'group-edit': d => groupForm(C().state.groups.find(g => g.id === d.id)),
+  'g-emoji': (d, el) => { ui.groupEmoji = d.v; $$('.emoji-pick button').forEach(b => b.classList.toggle('on', b === el)); },
+  'g-friend': (d, el) => {
+    const s = ui.groupSel;
+    if (s.has(d.uid)) s.delete(d.uid); else s.add(d.uid);
+    el.classList.toggle('sel', s.has(d.uid));
+    el.querySelector('.pk-check').textContent = s.has(d.uid) ? '✓' : '';
+  },
+  'g-save': async (d, el) => {
+    const name = $('#g-name').value.trim();
+    if (name.length < 2) { toast('Donne un nom au groupe'); return; }
+    el.disabled = true;
+    try {
+      if (d.id) { await C().renameGroup(d.id, name, ui.groupEmoji); closeModal(); toast('Groupe modifié ✔'); render(); return; }
+      const friends = C().state.friends.filter(f => ui.groupSel.has(f.uid));
+      const gid = await C().createGroup(name, ui.groupEmoji, friends);
+      closeModal();
+      location.hash = '#/group/' + gid;
+    } catch (e) { toast(C().errMsg(e)); el.disabled = false; }
+  },
+  'group-add': d => {
+    const g = C().state.groups.find(x => x.id === d.id);
+    const list = C().state.friends.filter(f => !g.members.includes(f.uid));
+    if (!list.length) { toast('Tous tes amis sont déjà dans le groupe'); return; }
+    ui.groupSel = new Set();
+    openSheet(`<h2>Ajouter au groupe</h2>
+      <div class="menu-links pick-friends">${list.map(f => `<button class="list-item" data-a="g-friend" data-uid="${f.uid}"><div class="avatar sm">${esc((f.name || '?')[0].toUpperCase())}</div><span class="grow">${esc(f.name)}</span><span class="pk-check"></span></button>`).join('')}</div>
+      <button class="btn primary block" data-a="g-add-ok" data-id="${d.id}">Ajouter</button>
+      <button class="btn ghost block" data-a="close-modal">Annuler</button>`);
+  },
+  'g-add-ok': async d => {
+    const friends = C().state.friends.filter(f => ui.groupSel.has(f.uid));
+    if (!friends.length) { toast('Choisis au moins un ami'); return; }
+    try { await C().addMembers(d.id, friends); closeModal(); toast('Ajouté ✔'); } catch (e) { toast(C().errMsg(e)); }
+  },
+  'group-leave': d => {
+    const g = C().state.groups.find(x => x.id === d.id);
+    confirmBox(`Quitter « ${esc(g.name)} » ? Tu ne verras plus les messages.`, 'Quitter', async () => {
+      try { await C().leaveGroup(g); location.hash = '#/friends'; toast('Tu as quitté le groupe'); } catch (e) { toast(C().errMsg(e)); }
+    });
+  },
+  'group-delete': d => {
+    const g = C().state.groups.find(x => x.id === d.id);
+    confirmBox(`Supprimer « ${esc(g.name)} » et tous ses messages pour tout le monde ?`, 'Supprimer', async () => {
+      try { stopChat(); await C().deleteGroup(g.id); location.hash = '#/friends'; toast('Groupe supprimé'); } catch (e) { toast(C().errMsg(e)); }
+    });
+  },
+  'send-msg': async () => {
+    const box = $('#msg-in'), text = box.value.trim();
+    if (!text) return;
+    box.value = ''; ui.chatDraft = ''; autoGrow(box);
+    try { await C().sendMessage(route[1], { text }); } catch (e) { toast(C().errMsg(e)); box.value = text; }
+  },
+  'send-photo': () => $('#photo-in').click(),
+  'share-workout': () => {
+    const ws = sortedWorkouts().slice(0, 8);
+    if (!ws.length) { toast('Tu n’as pas encore de séance à partager'); return; }
+    const gid = route[1];
+    menu('Partager une séance', ws.map(w => ({
+      label: `🏋️ ${esc(w.name)} <span class="muted small">· ${fmtDate(w.start)}</span>`,
+      fn: () => C().sendMessage(gid, { workout: workoutSummary(w) }).catch(e => toast(C().errMsg(e))),
+    })));
+  },
+  'photo-view': d => {
+    const m = chat.msgs && chat.msgs.find(x => x.id === d.mid);
+    if (!m) return;
+    openSheet(`<img class="photo-full" src="${m.img}" alt="Photo">
+      <div class="muted small center">${esc(m.name || '')} · ${fmtDate(m.at)} ${timeFmt.format(new Date(m.at))}</div>
+      <button class="btn ghost block" data-a="close-modal">Fermer</button>`, 'photo');
+  },
+  'msg-menu': (d, el) => {
+    if (el.closest && document.activeElement && document.activeElement.id === 'msg-in') return;
+    const gid = route[1];
+    const m = chat.msgs.find(x => x.id === d.mid);
+    if (!m) return;
+    menu('Message', [
+      ...(m.text ? [{ label: '📋 Copier le texte', fn: () => navigator.clipboard.writeText(m.text).then(() => toast('Copié ✔'), () => {}) }] : []),
+      { label: '🗑 Supprimer le message', danger: true, fn: () => C().deleteMessage(gid, m.id).catch(e => toast(C().errMsg(e))) },
+    ]);
+  },
   /* Compte et amis */
   'acc-signup': () => accountForm('signup'),
   'acc-login': () => accountForm('login'),
@@ -1675,6 +1938,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => {
   const t = e.target, d = t.dataset;
+  if (t.id === 'msg-in') { ui.chatDraft = t.value; autoGrow(t); return; }
   if (d.ob) {
     ob[d.ob] = d.ob === 'weight' ? fromDisp(t.value) : num(t.value);
   } else if (d.in) {
@@ -1699,6 +1963,17 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const t = e.target, k = t.dataset.setting;
   if (t.id === 'import-file' && t.files[0]) { importData(t.files[0]); t.value = ''; return; }
+  if (t.id === 'photo-in' && t.files[0]) {
+    const file = t.files[0], gid = route[1];
+    t.value = '';
+    const caption = $('#msg-in').value.trim();
+    toast('📷 Envoi de la photo…');
+    compressImage(file)
+      .then(img => C().sendMessage(gid, caption ? { img, text: caption } : { img }))
+      .then(() => { if (caption) { $('#msg-in').value = ''; ui.chatDraft = ''; } })
+      .catch(err => toast(err.code ? C().errMsg(err) : 'Impossible d’envoyer cette photo'));
+    return;
+  }
   if (t.dataset.cloud === 'share') {
     C().setPrivate(!t.checked).then(() => toast(t.checked ? 'Tes amis voient tes séances ✔' : '🔒 Tes séances sont maintenant privées'))
       .catch(err => { toast(C().errMsg(err)); t.checked = !t.checked; });
@@ -1737,9 +2012,7 @@ window.addEventListener('hashchange', () => {
 /* ---------- Partie en ligne ---------- */
 window.addEventListener('cloud-change', () => {
   if (!db.settings.onboarded) return;
-  const nreq = C().state.user ? C().state.requests.length : 0;
-  const badge = $('#nav-badge');
-  if (badge) { badge.hidden = !nreq; badge.textContent = nreq; }
+  updateNavBadge();
   refreshIfVisible();
 });
 window.addEventListener('cloud-login', () => syncOnLogin());

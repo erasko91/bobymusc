@@ -8,6 +8,7 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, deleteDoc,
   updateDoc, collection, getDocs, query, orderBy, limit, writeBatch, onSnapshot, deleteField,
+  where, arrayUnion, arrayRemove,
 } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js';
 
 const app = initializeApp({
@@ -28,7 +29,7 @@ try {
 }
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const state = { user: null, profile: null, friends: [], requests: [], ready: false };
+const state = { user: null, profile: null, friends: [], requests: [], groups: [], ready: false };
 let unsubs = [];
 const notify = () => window.dispatchEvent(new CustomEvent('cloud-change'));
 const uref = uid => doc(fs, 'users', uid);
@@ -78,6 +79,10 @@ function listen(uid) {
       notify();
     }, () => {}),
     onSnapshot(uref(uid), s => { if (s.exists()) { state.profile = s.data(); notify(); } }, () => {}),
+    onSnapshot(query(collection(fs, 'groups'), where('members', 'array-contains', uid)), s => {
+      state.groups = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
+      notify();
+    }, e => console.warn('groupes', e)),
   ];
 }
 
@@ -85,7 +90,7 @@ onAuthStateChanged(auth, async user => {
   state.user = user ? { uid: user.uid, email: user.email } : null;
   if (!user) {
     unsubs.forEach(u => u()); unsubs = [];
-    state.profile = null; state.friends = []; state.requests = [];
+    state.profile = null; state.friends = []; state.requests = []; state.groups = [];
   } else {
     try { state.profile = await ensureProfile(user, pendingName); } catch (e) { console.warn(e); }
     pendingName = null;
@@ -140,6 +145,7 @@ const Cloud = {
       getDocs(collection(fs, 'users', me, 'friends')),
       getDocs(collection(fs, 'users', me, 'requests')),
     ]);
+    for (const g of state.groups) { try { await Cloud.leaveGroup(g); } catch (e) { console.warn(e); } }
     unsubs.forEach(u => u()); unsubs = [];
     await del([
       ...ws.docs.map(d => d.ref), ...rq.docs.map(d => d.ref),
@@ -240,6 +246,59 @@ const Cloud = {
     await updateDoc(doc(fs, 'users', owner, 'workouts', wid), {
       [`reactions.${me}`]: emoji ? { e: emoji, n: state.profile.name } : deleteField(),
     });
+  },
+
+  /* ---------- Groupes ---------- */
+  async createGroup(name, emoji, friends) {
+    const me = state.user.uid;
+    const ref = doc(collection(fs, 'groups'));
+    const memberNames = { [me]: state.profile.name };
+    for (const f of friends) memberNames[f.uid] = f.name;
+    await setDoc(ref, {
+      name, emoji, owner: me, members: [me, ...friends.map(f => f.uid)], memberNames,
+      createdAt: Date.now(), lastAt: Date.now(), lastText: 'Groupe créé', lastBy: me,
+    });
+    return ref.id;
+  },
+  // Écoute les derniers messages d'un groupe en direct ; renvoie la fonction pour arrêter
+  watchMessages(gid, cb, n = 150) {
+    return onSnapshot(query(collection(fs, 'groups', gid, 'messages'), orderBy('at', 'desc'), limit(n)),
+      s => cb(s.docs.map(d => ({ id: d.id, ...d.data() })).reverse()),
+      e => cb(null, e));
+  },
+  async sendMessage(gid, msg) {
+    const me = state.user.uid;
+    const ref = doc(collection(fs, 'groups', gid, 'messages'));
+    const data = { uid: me, name: state.profile.name, at: Date.now(), ...msg };
+    const preview = msg.img ? '📷 Photo' : msg.workout ? '🏋️ ' + msg.workout.name : msg.text;
+    const b = writeBatch(fs);
+    b.set(ref, JSON.parse(JSON.stringify(data)));
+    b.update(doc(fs, 'groups', gid), { lastAt: data.at, lastText: (preview || '').slice(0, 80), lastBy: me, lastName: state.profile.name });
+    await b.commit();
+  },
+  deleteMessage: (gid, mid) => deleteDoc(doc(fs, 'groups', gid, 'messages', mid)),
+  renameGroup: (gid, name, emoji) => updateDoc(doc(fs, 'groups', gid), { name, emoji }),
+  async addMembers(gid, friends) {
+    const upd = { members: arrayUnion(...friends.map(f => f.uid)) };
+    for (const f of friends) upd[`memberNames.${f.uid}`] = f.name;
+    await updateDoc(doc(fs, 'groups', gid), upd);
+  },
+  async leaveGroup(g) {
+    const me = state.user.uid;
+    const rest = g.members.filter(u => u !== me);
+    if (!rest.length) return Cloud.deleteGroup(g.id);
+    const upd = { members: arrayRemove(me), [`memberNames.${me}`]: deleteField() };
+    if (g.owner === me) upd.owner = rest[0]; // on passe la main au membre suivant
+    await updateDoc(doc(fs, 'groups', g.id), upd);
+  },
+  async deleteGroup(gid) {
+    const msgs = await getDocs(collection(fs, 'groups', gid, 'messages'));
+    for (let i = 0; i < msgs.docs.length; i += 400) {
+      const b = writeBatch(fs);
+      msgs.docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
+      await b.commit();
+    }
+    await deleteDoc(doc(fs, 'groups', gid));
   },
 };
 
