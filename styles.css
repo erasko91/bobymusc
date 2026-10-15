@@ -15,7 +15,11 @@
   color-scheme: light;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; background: var(--bg); color: var(--text); }
+/* Le fond le plus profond (html) a la couleur de la barre du bas : sur iPhone, la zone du trait d'accueil
+   sous la barre affiche ce fond. Les pages, elles, gardent leur fond (body, au moins de la hauteur de l'écran). */
+html { margin: 0; background: var(--card); color: var(--text); }
+html:has(body.onboarding) { background: var(--bg); }
+body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; min-height: 100dvh; }
 body {
   font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   padding-bottom: 68px;
