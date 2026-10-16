@@ -1,7 +1,7 @@
 ﻿'use strict';
 /* BobyMusc — carnet de musculation 100 % gratuit. Toutes les données restent sur le téléphone. */
 
-const VERSION = '1.9.3';
+const VERSION = '1.10.0';
 window.BOBY_VERSION = VERSION;
 // Ancienne page restée en mémoire avec le nouveau code (fichiers manquants) : on recharge une page neuve
 if ((typeof MOTIV_ACTIONS === 'undefined' || typeof TIMER_ACTIONS === 'undefined') && !/[?&]fresh=/.test(location.search)) {
@@ -43,7 +43,7 @@ const defaults = () => ({
   settings: {
     name: '', unit: 'kg', dist: 'km', theme: 'dark', accent: 'orange', textSize: 100, weekStart: 'mon',
     rest: 90, autoRest: true, sound: 'bip', warn10: true, vibrate: true, wakelock: true,
-    defSets: 3, prefill: false,
+    defSets: 3, prefill: false, notif: false,
   },
   custom: [], routines: [], workouts: [], measures: [], active: null,
 });
@@ -1110,6 +1110,7 @@ function vSettings() {
         <label class="set-row"><span>Son de fin</span>${sel('sound', SOUND_NAMES)}</label>
         ${tog('warn10', 'Prévenir 10 s avant la fin', 'petit bip pour te préparer')}
         ${tog('vibrate', 'Vibration', 'Android seulement')}
+        ${tog('notif', 'Notification quand tu quittes l’appli', 'le temps restant et une alerte à la fin du repos, même appli fermée (sur iPhone : appli installée sur l’écran d’accueil)')}
         <button class="btn ghost block small test-sound" data-a="test-sound">🔊 Tester le son</button>
       </div>
 
@@ -1334,7 +1335,79 @@ const SOUND_NAMES = [['bip', 'Bip bip'], ['cloche', 'Cloche'], ['sifflet', 'Siff
 function playSound(kind) {
   try { (SOUNDS[kind] || SOUNDS.bip)(); } catch (e) { /* ignore */ }
 }
+/* ---------- Notifications quand on a quitté l'appli (minuteurs) ----------
+   Une appli web ne peut pas afficher un compte à rebours en direct dans la barre d'état :
+   on montre une notification « fin à 18:42:30 » (mise à jour tant que le téléphone laisse tourner l'appli)
+   puis une alerte qui sonne et vibre à la fin. */
+const notifOk = () => db.settings.notif && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator;
+const hms = t => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+// Le minuteur qui se termine le plus tôt (repos, rebours ou intervalles)
+function nextDeadline() {
+  const list = [];
+  if (db.active && db.active.rest) list.push({ end: db.active.rest.end, what: 'Repos' });
+  if (typeof tm !== 'undefined') {
+    if (tm.count.running) list.push({ end: tm.count.end, what: 'Minuteur' });
+    if (tm.hiit.running) list.push({ end: Date.now() + hiitTotal(tm.hiit) - hiitElapsed(), what: 'Intervalles' });
+  }
+  return list.sort((a, b) => a.end - b.end)[0] || null;
+}
+let notifShownAt = 0;
+async function showNotif(title, body, opts = {}) {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(title, { body, tag: 'bobymusc-timer', icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', lang: 'fr', ...opts });
+  } catch (e) { /* notifications refusées ou indisponibles */ }
+}
+async function clearNotif() {
+  notifShownAt = 0;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    (await reg.getNotifications({ tag: 'bobymusc-timer' })).forEach(n => n.close());
+  } catch (e) { /* ignore */ }
+}
+function ongoingNotif() {
+  const d = nextDeadline();
+  if (!notifOk() || !d) return;
+  const left = Math.max(0, d.end - Date.now());
+  showNotif(`⏱ ${d.what} : encore ${fmtClock(left + 999)}`, `Fin à ${hms(d.end)}. Reviens dans BobyMusc pour la suite 💪`,
+    { silent: true, renotify: false, timestamp: d.end, requireInteraction: true });
+  notifShownAt = Date.now();
+}
+// Fin d'un minuteur pendant que l'appli est en arrière-plan : alerte qui sonne et vibre
+function endNotif(title, body) {
+  if (!notifOk() || !document.hidden) return;
+  notifShownAt = 0;
+  showNotif(title, body, { silent: false, renotify: true, vibrate: [300, 150, 300, 150, 500] });
+}
+setInterval(() => {
+  if (document.hidden && notifShownAt && Date.now() - notifShownAt > 5000 && nextDeadline()) ongoingNotif();
+}, 1000);
+// Active les notifications (doit être appelé juste après un appui, sinon le téléphone refuse de demander)
+function enableNotif(box) {
+  const off = msg => { toast(msg); db.settings.notif = false; save(); if (box) box.checked = false; };
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    off(/iPhone|iPad/i.test(navigator.userAgent) ? 'Sur iPhone, installe d’abord BobyMusc sur l’écran d’accueil' : 'Notifications indisponibles sur ce navigateur');
+    return;
+  }
+  Notification.requestPermission().then(p => {
+    if (p !== 'granted') { off('Notifications refusées : autorise-les dans les réglages du téléphone'); return; }
+    db.settings.notif = true; save();
+    toast('🔔 Tu seras prévenu à la fin du repos, même appli fermée');
+  });
+}
+// La 1re fois qu'un minuteur démarre, on propose d'activer les notifications (une seule fois)
+function maybeAskNotif() {
+  if (navigator.webdriver && !window.__askNotifInTests) return; // pas pendant les tests automatiques
+  if (db.settings.notif || db.settings.notifAsked || !('Notification' in window) || Notification.permission === 'denied') return;
+  db.settings.notifAsked = true; save();
+  setTimeout(() => menu('Être prévenu quand le minuteur est fini, même si tu quittes l’appli ?', [
+    { label: '🔔 Oui, activer les notifications', fn: () => enableNotif() },
+    { label: 'Plus tard (Profil → Réglages → Minuteur)', fn: () => {} },
+  ]), 300);
+}
+
 function restAlarm() {
+  endNotif('✅ Repos terminé !', 'À toi de jouer : série suivante 💪');
   playSound(db.settings.sound);
   if (db.settings.vibrate && navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 500]);
   toast('⏱ Repos terminé, à toi de jouer !');
@@ -1343,6 +1416,7 @@ function startRest(sec) {
   db.active.rest = { end: Date.now() + sec * 1000, total: sec, warned: sec <= 15 };
   save();
   renderRestBar(true);
+  maybeAskNotif();
 }
 function renderRestBar(rebuild) {
   const bar = $('#restbar');
@@ -1459,11 +1533,13 @@ function finishPrompt() {
     return;
   }
   const dur = (a.editingId ? a.end : Date.now()) - a.start;
+  const routine = a.routineId && db.routines.find(r => r.id === a.routineId);
   openSheet(`<h2>${a.editingId ? 'Enregistrer les modifications' : 'Terminer la séance'}</h2>
     <div class="stats3">${stat('Durée', fmtDur(dur))}${stat('Volume', fmtW(t.vol))}${stat('Séries', t.sets)}</div>
     <label class="field">Nom<input id="fin-name" value="${esc(a.name)}"></label>
     <label class="field">Note (comment tu t’es senti…)<textarea id="fin-note" rows="3">${esc(a.note || '')}</textarea></label>
     <p class="muted small">Les séries non validées (sans ✓) ne seront pas enregistrées.</p>
+    ${routine && !a.editingId ? `<label class="set-row upd-routine"><span>Mettre à jour le programme « ${esc(routine.name)} »<small>les poids et répétitions de cette séance deviennent ceux du programme (et les exercices ajoutés y sont ajoutés)</small></span><input type="checkbox" id="fin-upd" checked></label>` : ''}
     <button class="btn primary block" data-a="finish-save">Enregistrer la séance</button>
     <button class="btn ghost block" data-a="close-modal">Continuer</button>`);
 }
@@ -1483,6 +1559,8 @@ function finishSave() {
   w.prs = computePRs(w);
   if (editing) db.workouts = db.workouts.map(x => x.id === w.id ? w : x);
   else db.workouts.push(w);
+  const updRoutine = $('#fin-upd') && $('#fin-upd').checked ? updateRoutineFrom(w) : null;
+  if (updRoutine) toast(`Programme « ${updRoutine.name} » mis à jour ✔`);
   // Objectifs atteints et badges débloqués grâce à cette séance
   const goalsDone = checkGoals(), badgesNew = newBadges();
   cloudPushWorkout(w);
@@ -1493,6 +1571,29 @@ function finishSave() {
   closeModal();
   if (!editing) afterNav = () => celebrate(w, goalsDone, badgesNew);
   location.hash = '#/workout/' + w.id;
+}
+// Reporte dans le programme ce qui a été fait pendant la séance (comme Hevy) :
+// les exercices faits prennent les nouvelles séries, ceux ajoutés en route sont ajoutés, ceux sautés restent tels quels.
+function updateRoutineFrom(w) {
+  const r = db.routines.find(x => x.id === w.routineId);
+  if (!r) return null;
+  const used = new Set();
+  for (const e of w.exercises) {
+    const sets = e.sets.map(s => ({ t: s.t || 'n', w: s.w ?? '', r: s.r ?? '', s: s.s ?? '', d: s.d ?? '', m: s.m ?? '' }));
+    const i = r.exercises.findIndex((x, k) => x.ex === e.ex && !used.has(k));
+    if (i >= 0) {
+      used.add(i);
+      // Séries faites = nouvelles valeurs ; séries prévues mais pas faites aujourd'hui = gardées telles quelles
+      const old = r.exercises[i].sets || [];
+      const lastW = [...sets].reverse().find(s => s.t !== 'w' && s.w !== '' && s.w != null);
+      r.exercises[i].sets = sets.concat(old.slice(sets.length).map(s => lastW && s.t !== 'w' ? { ...s, w: lastW.w } : s));
+      if (e.rest !== undefined) r.exercises[i].rest = e.rest;
+    } else {
+      r.exercises.push({ ex: e.ex, rest: e.rest, sets });
+      used.add(r.exercises.length - 1);
+    }
+  }
+  return r;
 }
 let afterNav = null;
 function celebrate(w, goals = [], badges = []) {
@@ -2137,12 +2238,14 @@ document.addEventListener('change', e => {
   save();
   if (k === 'theme' || k === 'textSize') applyTheme();
   if (k === 'sound') { unlockAudio(); playSound(t.value); }
+  if (k === 'notif' && t.checked) enableNotif(t);
   if (k === 'wakelock' && !t.checked) releaseWake();
 });
 // Sélectionner le contenu d'une case quand on la touche (plus rapide pour corriger)
 document.addEventListener('focusin', e => { if (e.target.classList && e.target.classList.contains('in')) e.target.select(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { tick(); if (route[0] === 'active') keepAwake(); }
+  if (document.visibilityState === 'visible') { tick(); clearNotif(); if (route[0] === 'active') keepAwake(); }
+  else ongoingNotif(); // on quitte l'appli pendant un minuteur : notification avec le temps restant
 });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (db.settings.theme === 'auto') applyTheme(); });
 window.addEventListener('hashchange', () => {

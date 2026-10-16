@@ -94,6 +94,7 @@ async function tmKeepAwake(on) {
   } catch (e) { /* refusé */ }
 }
 function tmAlarm(text) {
+  endNotif(text, 'Ton minuteur BobyMusc est terminé 💪');
   playSound(db.settings.sound === 'none' ? 'none' : db.settings.sound);
   if (db.settings.vibrate && navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 500]);
   toast(text);
@@ -204,6 +205,7 @@ const TIMER_ACTIONS = {
       h.start = now; h.running = true;
     }
     tmSave(); tmKeepAwake(true); render();
+    maybeAskNotif();
   },
   'tm-pause': () => {
     const now = Date.now();

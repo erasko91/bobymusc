@@ -1,8 +1,8 @@
 ﻿/* BobyMusc — permet à l'appli de marcher sans internet.
    Changer CACHE à chaque nouvelle version pour que les téléphones la récupèrent. */
-const CACHE = 'bobymusc-1.9.3';
+const CACHE = 'bobymusc-1.10.0';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'exercises.js', 'motivation.js', 'timer.js', 'cloud.js', 'manifest.webmanifest',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/badge-96.png'];
 const SDK = 'https://www.gstatic.com/firebasejs/';
 
 self.addEventListener('install', e => {
@@ -12,6 +12,14 @@ self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
     .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== 'bobymusc-sdk').map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
+});
+// Toucher une notification du minuteur ramène dans l'appli
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    const c = list.find(x => x.url.startsWith(self.registration.scope));
+    return c ? c.focus() : self.clients.openWindow('./#/active');
+  }));
 });
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
